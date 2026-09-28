@@ -129,14 +129,8 @@ else:
             risk_profile=risk_profile,
             execution_profile=execution_profile,
             diagnostics=diagnostics,
+            sort_by=sort_by,
         )
-
-    for opportunity in opportunities:
-        opportunity["capital_efficiency"] = (
-            opportunity["net_profit"] / opportunity["buy_cost"]
-            if opportunity["buy_cost"] else 0.0
-        )
-    opportunities.sort(key=lambda item: item[sort_by], reverse=True)
 
     if not opportunities:
         st.info("Nenhuma oportunidade encontrada.")
@@ -187,6 +181,10 @@ else:
                     "ROI": f'{item["roi"]:.2%}',
                     "ISK/h": f'{item["isk_per_hour"]:,.0f}',
                     "Ef. capital": f'{item["capital_efficiency"]:.2%}',
+                    "Spread": f'{item["spread_pct"]:.2%}',
+                    "Cobertura book": f'{item["book_coverage"]:.2%}',
+                    "Book origem": item["source_book_volume"],
+                    "Book destino": item["destination_book_volume"],
                     "Jumps": item["jumps"],
                     "Segurança mín.": f'{item["min_security_status"]:.2f}',
                     "Low-sec": item["lowsec_systems"],
@@ -195,6 +193,6 @@ else:
                 }
                 for item in opportunities
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
