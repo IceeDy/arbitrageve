@@ -136,4 +136,4 @@ def test_collect_region_preserves_order_fields_and_parses_issued_timestamp():
     assert order.volume_total == 20
     assert order.is_buy_order is False
     assert order.duration == 90
-    assert order.issued == datetime(2026, 9, 28, 12, 0)
+    assert order.issued == datetime(2026, 9, 28, 12, 0, tzinfo=UTC).replace(tzinfo=None)
