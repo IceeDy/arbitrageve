@@ -8,6 +8,7 @@ from arbitrageve.sde.loader import (
     download_latest_sde,
     inspect_types_archive,
     load_solar_systems_from_archive,
+    load_stargates_from_archive,
     load_types,
 )
 
@@ -19,7 +20,7 @@ st.caption("Atualização do SDE e snapshots de mercado")
 st.subheader("Static Data Export (SDE)")
 st.write(
     "O SDE fornece os tipos de itens e os sistemas solares usados pelo scanner "
-    "para nomes, volumes e análise de segurança."
+    "para nomes, volumes, análise de segurança e roteamento local."
 )
 st.caption(f"Loader SDE: {LOADER_VERSION}")
 
@@ -46,14 +47,16 @@ if st.button("Atualizar SDE", type="primary"):
             progress.empty()
             st.stop()
 
-        progress.progress(60, text="Importando tipos e sistemas...")
+        progress.progress(60, text="Importando tipos, sistemas e stargates...")
         with SessionLocal() as session:
             item_count = load_types(archive, session)
             system_count = load_solar_systems_from_archive(archive, session)
+            stargate_count = load_stargates_from_archive(archive, session)
 
         progress.progress(100, text="SDE carregado.")
         st.success(
-            f"SDE carregado: {item_count:,} tipos e {system_count:,} sistemas."
+            f"SDE carregado: {item_count:,} tipos, {system_count:,} sistemas "
+            f"e {stargate_count:,} stargates."
         )
         if item_count == 0:
             st.error(
@@ -115,13 +118,15 @@ st.subheader("Status do banco")
 with SessionLocal() as session:
     from sqlalchemy import func, select
 
-    from arbitrageve.db.models import Item, MarketOrder, SolarSystem
+    from arbitrageve.db.models import Item, MarketOrder, SolarSystem, Stargate
 
     item_count = session.scalar(select(func.count()).select_from(Item)) or 0
     system_count = session.scalar(select(func.count()).select_from(SolarSystem)) or 0
     order_count = session.scalar(select(func.count()).select_from(MarketOrder)) or 0
+    stargate_count = session.scalar(select(func.count()).select_from(Stargate)) or 0
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 col1.metric("Tipos de item", f"{item_count:,}")
 col2.metric("Sistemas", f"{system_count:,}")
-col3.metric("Ordens", f"{order_count:,}")
+col3.metric("Stargates", f"{stargate_count:,}")
+col4.metric("Ordens", f"{order_count:,}")
