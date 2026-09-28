@@ -1,21 +1,21 @@
 from arbitrageve.db.models import SolarSystem
 
 
-def test_security_class():
+def def test_security_class():
     assert SolarSystem(system_id=1, name="High", security_status=0.9).security_class == "highsec"
     assert SolarSystem(system_id=2, name="Low", security_status=0.3).security_class == "lowsec"
     assert SolarSystem(system_id=3, name="Null", security_status=0.0).security_class == "nullsec"
+
 
 import json
 import zipfile
 
 from arbitrageve.db.database import Base
-from arbitrageve.db.models import Item, SolarSystem, Stargate
+from arbitrageve.db.models import Item, Stargate
 from arbitrageve.sde.loader import (
     inspect_types_archive,
     load_stargates_from_archive,
     load_types,
-    load_solar_systems_from_archive,
 )
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
