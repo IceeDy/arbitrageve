@@ -1,15 +1,16 @@
 import json
 import zipfile
 
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+
 from arbitrageve.db.database import Base
-from arbitrageve.db.models import Item, Stargate
+from arbitrageve.db.models import Item, SolarSystem, Stargate
 from arbitrageve.sde.loader import (
     inspect_types_archive,
     load_stargates_from_archive,
     load_types,
 )
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
 
 
 def _make_sde(tmp_path, records):
@@ -82,9 +83,6 @@ def test_load_stargates_current_object_shape(tmp_path):
     gate = session.get(Stargate, 50000001)
     assert gate.system_id == 30000001
     assert gate.destination_system_id == 30000002
-
-
-from arbitrageve.db.models import SolarSystem
 
 
 def test_security_class():
