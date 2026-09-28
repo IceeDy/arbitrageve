@@ -8,7 +8,6 @@ from arbitrageve.sde.loader import (
     load_types,
 )
 
-
 if __name__ == "__main__":
     init_db()
     archive = Path("data/eve-sde-latest.zip")
