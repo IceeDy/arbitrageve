@@ -1,8 +1,9 @@
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from arbitrageve.db.models import Item, MarketOrder
+from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
+from arbitrageve.services.risk import RiskProfile, analyze_route, route_allowed
 
 
 def _consume_orders(orders, quantity: int):
@@ -79,17 +80,13 @@ def find_opportunities(
     route_client=None,
     route_preference: str = "Shorter",
     security_penalty: int = 50,
+    risk_profile: RiskProfile | None = None,
 ) -> list[dict]:
-    """Find executable cross-region opportunities using order-book depth.
-
-    The scanner consumes source sell orders from cheapest to most expensive
-    and destination buy orders from highest to lowest. For execution safety,
-    it currently uses the location/system of the best source order and the
-    best destination order as the trade lane. All quantity for the result is
-    therefore sourced from one location and sold into one destination lane.
-    """
+    """Find executable cross-region opportunities using order-book depth."""
     costs = costs or TradeCosts()
     costs.validate()
+    risk_profile = risk_profile or RiskProfile()
+    risk_profile.validate()
 
     item_ids = session.execute(
         select(MarketOrder.type_id)
@@ -98,7 +95,8 @@ def find_opportunities(
     ).scalars().all()
 
     results = []
-    route_cache: dict[tuple[int, int], int] = {}
+    route_cache: dict[tuple[int, int, str, int], tuple[list[int], int]] = {}
+    system_cache: dict[int, SolarSystem | None] = {}
 
     for type_id in item_ids:
         item = session.get(Item, type_id)
@@ -135,8 +133,6 @@ def find_opportunities(
         if volume <= 0 or cargo_m3 <= 0 or capital_isk <= 0:
             continue
 
-        # Keep the lane executable: do not combine inventory from different
-        # stations/structures into a single cargo load.
         source_lane = (source_orders[0].system_id, source_orders[0].location_id)
         destination_lane = (destination_orders[0].system_id, destination_orders[0].location_id)
         source_orders = [o for o in source_orders if (o.system_id, o.location_id) == source_lane]
@@ -144,13 +140,31 @@ def find_opportunities(
 
         origin_system = source_lane[0]
         destination_system = destination_lane[0]
-        cache_key = (origin_system, destination_system)
+        cache_key = (origin_system, destination_system, route_preference, security_penalty)
         if cache_key not in route_cache:
             if route_client and origin_system != destination_system:
-                route_cache[cache_key] = len(route_client.route(origin_system, destination_system, preference=route_preference, security_penalty=security_penalty)) - 1
+                route = route_client.route(
+                    origin_system,
+                    destination_system,
+                    preference=route_preference,
+                    security_penalty=security_penalty,
+                )
             else:
-                route_cache[cache_key] = 0
-        jumps = route_cache[cache_key]
+                route = [origin_system]
+            route_cache[cache_key] = (route, max(0, len(route) - 1))
+
+        route, jumps = route_cache[cache_key]
+        systems = []
+        for system_id in route:
+            if system_id not in system_cache:
+                system_cache[system_id] = session.get(SolarSystem, system_id)
+            if system_cache[system_id] is not None:
+                systems.append(system_cache[system_id])
+
+        risk = analyze_route(systems, jumps)
+        risk["jumps"] = jumps
+        if not route_allowed(risk_profile, risk):
+            continue
 
         source_available = sum(o.volume_remain for o in source_orders)
         destination_available = sum(o.volume_remain for o in destination_orders)
@@ -197,6 +211,13 @@ def find_opportunities(
                 "roi": roi,
                 "volume_m3": quantity * volume,
                 "jumps": jumps,
+                "route_system_ids": route,
+                "route_class": risk["route_class"],
+                "highsec_systems": risk["highsec_systems"],
+                "lowsec_systems": risk["lowsec_systems"],
+                "nullsec_systems": risk["nullsec_systems"],
+                "min_security_status": risk["min_security_status"],
+                "risk_score": risk["risk_score"],
                 "source_system_id": origin_system,
                 "source_location_id": source_lane[1],
                 "destination_system_id": destination_system,
