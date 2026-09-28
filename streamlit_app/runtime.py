@@ -7,7 +7,7 @@ from pathlib import Path
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 
 
-def load_repo_module(module_name: str, relative_path: str):
+def load_repo_module(module_name: str, relative_path: str, force: bool = False):
     """Load a repository module into its canonical import name.
 
     Streamlit Cloud can retain an installed/cached package module across
@@ -36,4 +36,4 @@ load_repo_module("arbitrageve.db.database", "arbitrageve/db/database.py")
 load_repo_module("arbitrageve.db.models", "arbitrageve/db/models.py")
 load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
 load_repo_module("arbitrageve.sde.routes", "arbitrageve/sde/routes.py")
-load_repo_module("arbitrageve.services.opportunities", "arbitrageve/services/opportunities.py")
+load_repo_module("arbitrageve.services.opportunities", "arbitrageve/services/opportunities.py", force=True)
