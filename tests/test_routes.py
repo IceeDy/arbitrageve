@@ -27,12 +27,15 @@ def test_local_route_shorter_uses_fewest_jumps():
         (2, "B", 1.0),
         (3, "C", 1.0),
         (4, "D", 1.0),
+        (5, "E", 1.0),
     )
     session.add_all([
         Stargate(stargate_id=10, system_id=1, destination_system_id=2),
         Stargate(stargate_id=11, system_id=2, destination_system_id=1),
-        Stargate(stargate_id=12, system_id=2, destination_system_id=3),
-        Stargate(stargate_id=13, system_id=3, destination_system_id=2),
+        Stargate(stargate_id=12, system_id=2, destination_system_id=5),
+        Stargate(stargate_id=13, system_id=5, destination_system_id=2),
+        Stargate(stargate_id=18, system_id=5, destination_system_id=3),
+        Stargate(stargate_id=19, system_id=3, destination_system_id=5),
         Stargate(stargate_id=14, system_id=1, destination_system_id=4),
         Stargate(stargate_id=15, system_id=4, destination_system_id=1),
         Stargate(stargate_id=16, system_id=4, destination_system_id=3),
