@@ -16,18 +16,8 @@ from arbitrageve.db.models import Stargate
 from arbitrageve.db.database import SessionLocal, init_db
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
-_opportunities_module = load_repo_module(
-    "arbitrageve_runtime_opportunities",
-    "arbitrageve/services/opportunities.py",
-)
-find_opportunities = _opportunities_module.find_opportunities
-
-_local_routes_module = load_repo_module(
-    "arbitrageve_runtime_local_routes",
-    "arbitrageve/sde/routes.py",
-)
-LocalRouteClient = _local_routes_module.LocalRouteClient
-
+from arbitrageve.sde.routes import LocalRouteClient
+from arbitrageve.services.opportunities import find_opportunities
 from arbitrageve.services.risk import RiskProfile
 
 st.set_page_config(page_title="ArbitrageVE", page_icon="📈", layout="wide")
