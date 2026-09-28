@@ -16,7 +16,7 @@ def load_repo_module(module_name: str, relative_path: str, force: bool = False):
     """
     path = (SRC_DIR / relative_path).resolve()
     existing = sys.modules.get(module_name)
-    if existing is not None:
+    if not force and existing is not None:
         existing_path = getattr(existing, "__file__", None)
         if existing_path and Path(existing_path).resolve() == path:
             return existing
