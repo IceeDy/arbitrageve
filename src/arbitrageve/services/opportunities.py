@@ -321,7 +321,7 @@ def find_opportunities(
 
                 max_quantity = min(
                     source_book_volume, destination_book_volume,
-                    int(cargo_m3 // volume),
+                    math.floor(cargo_m3 / volume + 1e-9),
                 )
                 quantity = _max_affordable_quantity(
                     source_book, destination_book, max_quantity,
