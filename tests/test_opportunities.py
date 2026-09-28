@@ -320,3 +320,48 @@ def test_stale_market_snapshot_is_rejected():
 
     assert result == []
     assert diagnostics["rejected_stale_market"] == 1
+
+def test_execution_class_distinguishes_speculative_and_scalable_trades():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add_all([
+        Item(type_id=42, name="Speculative", volume=1.0),
+        Item(type_id=43, name="Scalable", volume=1.0),
+    ])
+    session.add_all([
+        MarketOrder(order_id=71, region_id=10000002, system_id=1, location_id=10,
+                    type_id=42, price=100, volume_remain=2, volume_total=2,
+                    is_buy_order=False, collected_at=FRESH_COLLECTED_AT),
+        MarketOrder(order_id=72, region_id=10000043, system_id=2, location_id=20,
+                    type_id=42, price=200, volume_remain=2, volume_total=2,
+                    is_buy_order=True, collected_at=FRESH_COLLECTED_AT),
+        MarketOrder(order_id=73, region_id=10000002, system_id=1, location_id=10,
+                    type_id=43, price=100, volume_remain=250, volume_total=250,
+                    is_buy_order=False, collected_at=FRESH_COLLECTED_AT),
+        MarketOrder(order_id=74, region_id=10000043, system_id=2, location_id=20,
+                    type_id=43, price=150, volume_remain=250, volume_total=250,
+                    is_buy_order=True, collected_at=FRESH_COLLECTED_AT),
+    ])
+    session.commit()
+
+    result = find_opportunities(
+        session, 10000002, 10000043, capital_isk=100_000, cargo_m3=200,
+        min_roi=0.0, min_profit_isk=0, limit=10,
+    )
+    by_name = {row["name"]: row for row in result}
+
+    speculative = by_name["Speculative"]
+    assert speculative["quantity"] == 2
+    assert speculative["execution_class"] == "Especulativa"
+    assert speculative["scalable"] is False
+    assert speculative["min_executable_quantity"] == 2
+    assert speculative["profit_per_unit"] == speculative["net_profit"] / 2
+
+    scalable = by_name["Scalable"]
+    assert scalable["quantity"] == 200
+    assert scalable["execution_class"] == "Escalável"
+    assert scalable["scalable"] is True
+    assert scalable["min_executable_quantity"] == 200
+    assert scalable["profit_per_unit"] == scalable["net_profit"] / 200

@@ -133,6 +133,15 @@ def _liquidity_class(quantity: int, book_capacity: int, coverage: float) -> str:
         return "Média"
     return "Baixa"
 
+def _execution_class(quantity: int, book_capacity: int, coverage: float) -> str:
+    """Classify execution scale using depth rather than ROI alone."""
+    if quantity <= 2 or book_capacity <= 2:
+        return "Especulativa"
+    if quantity >= 100 and book_capacity >= 100 and coverage <= 0.80:
+        return "Escalável"
+    return "Executável"
+
+
 
 def find_opportunities(
     session,
@@ -359,6 +368,9 @@ def find_opportunities(
                 liquidity_class = _liquidity_class(
                     quantity, book_capacity, book_coverage
                 )
+                execution_class = _execution_class(
+                    quantity, book_capacity, book_coverage
+                )
 
                 if gross_profit > 0 and diagnostics is not None:
                     diagnostics["gross_profit_positive"] += 1
@@ -382,6 +394,8 @@ def find_opportunities(
                     "safety_margin": trade_costs["safety_margin"],
                     "total_costs": trade_costs["total_costs"],
                     "net_profit": net_profit, "roi": roi,
+                    "profit_per_unit": net_profit / quantity if quantity else 0.0,
+                    "capital_required": spent + trade_costs["total_costs"],
                     "capital_efficiency": capital_efficiency,
                     "spread_isk": spread_isk, "spread_pct": spread_pct,
                     "source_book_volume": source_book_volume,
@@ -389,6 +403,9 @@ def find_opportunities(
                     "book_capacity": book_capacity,
                     "book_coverage": book_coverage,
                     "liquidity_class": liquidity_class,
+                    "execution_class": execution_class,
+                    "scalable": execution_class == "Escalável",
+                    "min_executable_quantity": quantity,
                     "market_age_minutes": market_age_minutes,
                     "estimated_minutes": estimated_minutes, "isk_per_hour": isk_per_hour,
                     "volume_m3": quantity * volume, "jumps": jumps,
