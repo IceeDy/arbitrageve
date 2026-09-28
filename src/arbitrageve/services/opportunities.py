@@ -111,6 +111,11 @@ def find_opportunities(
                 "with_valid_volume": 0,
                 "routes_checked": 0,
                 "routes_allowed": 0,
+                "rejected_max_jumps": 0,
+                "rejected_nullsec": 0,
+                "rejected_lowsec": 0,
+                "rejected_unknown_route": 0,
+                "rejected_other_risk": 0,
                 "quantity_executable": 0,
                 "gross_profit_positive": 0,
                 "roi_pass": 0,
@@ -197,6 +202,17 @@ def find_opportunities(
         risk = analyze_route(systems, jumps)
         risk["jumps"] = jumps
         if not route_allowed(risk_profile, risk):
+            if diagnostics is not None:
+                if risk_profile.max_jumps is not None and jumps > risk_profile.max_jumps:
+                    diagnostics["rejected_max_jumps"] += 1
+                elif risk.get("nullsec_systems", 0) > 0 and not risk_profile.allow_nullsec:
+                    diagnostics["rejected_nullsec"] += 1
+                elif risk.get("lowsec_systems", 0) > 0 and not risk_profile.allow_lowsec:
+                    diagnostics["rejected_lowsec"] += 1
+                elif risk.get("route_class") == "unknown":
+                    diagnostics["rejected_unknown_route"] += 1
+                else:
+                    diagnostics["rejected_other_risk"] += 1
             continue
         if diagnostics is not None:
             diagnostics["routes_allowed"] += 1
