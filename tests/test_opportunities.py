@@ -8,6 +8,8 @@ from arbitrageve.db.models import Item, MarketOrder
 from arbitrageve.services.opportunities import find_opportunities
 
 
+FRESH_COLLECTED_AT = datetime.now(UTC).replace(tzinfo=None)
+
 def test_order_book_depth_changes_effective_prices():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -19,22 +21,22 @@ def test_order_book_depth_changes_effective_prices():
             MarketOrder(
                 order_id=1, region_id=10000002, system_id=1, location_id=1,
                 type_id=34, price=5, volume_remain=100, volume_total=100,
-                is_buy_order=False, collected_at=None,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=2, region_id=10000002, system_id=1, location_id=1,
                 type_id=34, price=6, volume_remain=100, volume_total=100,
-                is_buy_order=False, collected_at=None,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=3, region_id=10000043, system_id=2, location_id=2,
                 type_id=34, price=8, volume_remain=100, volume_total=100,
-                is_buy_order=True, collected_at=None,
+                is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=4, region_id=10000043, system_id=2, location_id=2,
                 type_id=34, price=7, volume_remain=100, volume_total=100,
-                is_buy_order=True, collected_at=None,
+                is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
             ),
         ]
     )
@@ -68,12 +70,12 @@ def test_net_profit_applies_sales_tax_and_transport():
             MarketOrder(
                 order_id=11, region_id=10000002, system_id=1, location_id=10,
                 type_id=35, price=100, volume_remain=10, volume_total=10,
-                is_buy_order=False, collected_at=None,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=12, region_id=10000043, system_id=2, location_id=20,
                 type_id=35, price=150, volume_remain=10, volume_total=10,
-                is_buy_order=True, collected_at=None,
+                is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
             ),
         ]
     )
@@ -111,17 +113,17 @@ def test_opportunity_exposes_liquidity_and_spread_metrics():
             MarketOrder(
                 order_id=21, region_id=10000002, system_id=1, location_id=10,
                 type_id=36, price=100, volume_remain=100, volume_total=100,
-                is_buy_order=False, collected_at=None,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=22, region_id=10000002, system_id=1, location_id=10,
                 type_id=36, price=110, volume_remain=100, volume_total=100,
-                is_buy_order=False, collected_at=None,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=23, region_id=10000043, system_id=2, location_id=20,
                 type_id=36, price=150, volume_remain=150, volume_total=150,
-                is_buy_order=True, collected_at=None,
+                is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
             ),
         ]
     )
@@ -163,22 +165,22 @@ def test_sort_by_applies_before_limit():
             MarketOrder(
                 order_id=31, region_id=10000002, system_id=1, location_id=10,
                 type_id=37, price=100, volume_remain=10, volume_total=10,
-                is_buy_order=False, collected_at=None,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=32, region_id=10000043, system_id=2, location_id=20,
                 type_id=37, price=200, volume_remain=10, volume_total=10,
-                is_buy_order=True, collected_at=None,
+                is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=33, region_id=10000002, system_id=1, location_id=10,
                 type_id=38, price=10, volume_remain=1000, volume_total=1000,
-                is_buy_order=False, collected_at=None,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=34, region_id=10000043, system_id=2, location_id=20,
                 type_id=38, price=11, volume_remain=1000, volume_total=1000,
-                is_buy_order=True, collected_at=None,
+                is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
             ),
         ]
     )
@@ -213,12 +215,12 @@ def test_capital_sizing_includes_all_modeled_trade_costs():
             MarketOrder(
                 order_id=41, region_id=10000002, system_id=1, location_id=10,
                 type_id=39, price=100, volume_remain=10, volume_total=10,
-                is_buy_order=False, collected_at=None,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=42, region_id=10000043, system_id=2, location_id=20,
                 type_id=39, price=150, volume_remain=10, volume_total=10,
-                is_buy_order=True, collected_at=None,
+                is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
             ),
         ]
     )
@@ -253,12 +255,12 @@ def test_liquidity_class_uses_absolute_depth_and_book_coverage():
             MarketOrder(
                 order_id=51, region_id=10000002, system_id=1, location_id=10,
                 type_id=40, price=100, volume_remain=2000, volume_total=2000,
-                is_buy_order=False, collected_at=None,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
             ),
             MarketOrder(
                 order_id=52, region_id=10000043, system_id=2, location_id=20,
                 type_id=40, price=150, volume_remain=2000, volume_total=2000,
-                is_buy_order=True, collected_at=None,
+                is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
             ),
         ]
     )
