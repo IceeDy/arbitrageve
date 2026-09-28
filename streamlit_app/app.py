@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from runtime import SRC_DIR, load_repo_module
+from runtime import load_repo_module
 
 load_repo_module("arbitrageve.db.database", "arbitrageve/db/database.py")
 load_repo_module("arbitrageve.db.models", "arbitrageve/db/models.py")
@@ -10,7 +10,7 @@ load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
 
 import streamlit as st
 
-from arbitrageve.config.regions import DOMAIN, REGIONS, THE_FORGE
+from arbitrageve.config.regions import REGIONS, THE_FORGE
 from arbitrageve.config.settings import settings
 from arbitrageve.db.models import Stargate
 from arbitrageve.db.database import SessionLocal, init_db
