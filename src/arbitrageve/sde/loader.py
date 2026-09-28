@@ -42,6 +42,20 @@ def _value(record: dict) -> dict:
     return record
 
 
+def _localized_name(value: object) -> str | None:
+    """Extract the English name from current SDE localized-name objects."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        name = value.get("en")
+        if isinstance(name, str):
+            return name
+        for candidate in value.values():
+            if isinstance(candidate, str):
+                return candidate
+    return None
+
+
 def load_types_from_archive(archive_path: Path, session: Session) -> int:
     """Load type IDs, names and volumes from the current official JSONL SDE."""
     with zipfile.ZipFile(archive_path) as archive:
@@ -51,21 +65,28 @@ def load_types_from_archive(archive_path: Path, session: Session) -> int:
             for raw_line in stream:
                 if not raw_line.strip():
                     continue
+
                 record = json.loads(raw_line)
                 type_id = int(record["_key"])
                 value = _value(record)
-                name = value.get("name")
+
+                name = _localized_name(value.get("name"))
                 volume = value.get("volume")
+                if volume is None:
+                    volume = value.get("packagedVolume")
+
                 if not name or volume is None:
                     continue
+
                 session.merge(
                     Item(
                         type_id=type_id,
-                        name=str(name),
+                        name=name,
                         volume=float(volume),
                     )
                 )
                 count += 1
+
     session.commit()
     return count
 
@@ -79,21 +100,25 @@ def load_solar_systems_from_archive(archive_path: Path, session: Session) -> int
             for raw_line in stream:
                 if not raw_line.strip():
                     continue
+
                 record = json.loads(raw_line)
                 system_id = int(record["_key"])
                 value = _value(record)
-                name = value.get("name")
+
+                name = _localized_name(value.get("name"))
                 security_status = value.get("securityStatus")
                 if not name or security_status is None:
                     continue
+
                 session.merge(
                     SolarSystem(
                         system_id=system_id,
-                        name=str(name),
+                        name=name,
                         security_status=float(security_status),
                     )
                 )
                 count += 1
+
     session.commit()
     return count
 
