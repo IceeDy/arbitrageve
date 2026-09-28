@@ -13,7 +13,7 @@ LATEST_SDE_URL = (
     "https://developers.eveonline.com/static-data/"
     "eve-online-static-data-latest-jsonl.zip"
 )
-LOADER_VERSION = "2026-09-28-sde-debug-1"
+LOADER_VERSION = "2026-09-28-local-routing-1"
 
 
 def download_latest_sde(destination: Path) -> Path:
