@@ -369,8 +369,13 @@ def find_opportunities(
                     "min_security_status": risk["min_security_status"],
                     "risk_score": risk["risk_score"],
                     "source_system_id": origin_system,
+                    "source_system_name": systems[0].name if systems else f"system:{origin_system}",
                     "source_location_id": origin_location,
                     "destination_system_id": destination_system,
+                    "destination_system_name": next(
+                        (system.name for system in systems if system.system_id == destination_system),
+                        f"system:{destination_system}",
+                    ),
                     "destination_location_id": destination_location,
                     "source_region_id": source_region_id,
                     "destination_region_id": destination_region_id,
