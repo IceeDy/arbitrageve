@@ -1,8 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import and_, select
-from sqlalchemy.orm import Session
-
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
 from arbitrageve.market.metrics import ExecutionProfile, estimate_isk_per_hour
@@ -35,6 +33,51 @@ def _sell_orders(orders, quantity: int):
         if remaining <= 0:
             break
     return sold, revenue
+
+
+def _group_orders_by_lane(orders):
+    lanes = {}
+    for order in orders:
+        lane = (order.system_id, order.location_id)
+        lanes.setdefault(lane, []).append(order)
+    return lanes
+
+
+def _select_candidate_lanes(lanes, *, is_source, max_lanes=8):
+    """Keep a bounded set of liquid, price-competitive station lanes."""
+    summaries = []
+    for lane, orders in lanes.items():
+        ordered = sorted(orders, key=lambda o: o.price, reverse=not is_source)
+        volume = sum(o.volume_remain for o in orders)
+        if volume <= 0:
+            continue
+        summaries.append((lane, ordered, volume))
+
+    summaries.sort(
+        key=lambda x: (x[1][0].price, -x[2])
+        if is_source
+        else (-x[1][0].price, -x[2])
+    )
+    return summaries[:max_lanes]
+
+
+def _route_for_lane(route_client, route_cache, origin, destination, preference, security_penalty):
+    cache_key = (origin, destination, preference, security_penalty)
+    if cache_key in route_cache:
+        return route_cache[cache_key]
+
+    if not route_client or origin == destination:
+        route_cache[cache_key] = ([origin], 0)
+        return route_cache[cache_key]
+
+    route = route_client.route(
+        origin,
+        destination,
+        preference=preference,
+        security_penalty=security_penalty,
+    )
+    route_cache[cache_key] = (route, max(0, len(route) - 1))
+    return route_cache[cache_key]
 
 
 def _max_affordable_quantity(
@@ -205,7 +248,7 @@ def find_opportunities(
                 ]
                 market_age_minutes = None
                 if collected_times:
-                    now = datetime.now(timezone.utc).replace(tzinfo=None)
+                    now = datetime.now(UTC).replace(tzinfo=None)
                     oldest_snapshot = min(collected_times)
                     market_age_minutes = max(
                         0.0, (now - oldest_snapshot).total_seconds() / 60.0
