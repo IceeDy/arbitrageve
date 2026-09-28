@@ -6,7 +6,13 @@ from arbitrageve.config.settings import settings
 
 
 class ESIRequestError(requests.HTTPError):
-    """HTTP error from ESI with the response body preserved for diagnostics."""
+    """HTTP error from ESI with structured rate-limit metadata."""
+
+    def __init__(self, message, *, status_code=None, retry_after=None, rate_limit_headers=None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
+        self.rate_limit_headers = rate_limit_headers or {}
 
 
 class ESIClient:
@@ -47,12 +53,7 @@ class ESIClient:
             # prolong the rate-limited period. The caller can decide whether
             # to stop the current scan and try again later.
             if response.status_code == 429:
-                error = ESIRequestError(
-                    f"ESI returned HTTP 429: {response.text[:1000]}"
-                )
-                error.status_code = 429
-                error.retry_after = response.headers.get("Retry-After")
-                error.rate_limit_headers = {
+                rate_limit_headers = {
                     key: response.headers.get(key)
                     for key in (
                         "X-Ratelimit-Group",
@@ -62,15 +63,21 @@ class ESIClient:
                     )
                     if response.headers.get(key) is not None
                 }
+                raise ESIRequestError(
+                    f"ESI returned HTTP 429: {response.text[:1000]}",
+                    status_code=429,
+                    retry_after=response.headers.get("Retry-After"),
+                    rate_limit_headers=rate_limit_headers,
+                )
                 raise error
 
             # Retry transient server failures, but not client-side errors.
             if 500 <= response.status_code < 600:
                 last_error = ESIRequestError(
                     f"ESI returned HTTP {response.status_code}: "
-                    f"{response.text[:1000]}"
+                    f"{response.text[:1000]}",
+                    status_code=response.status_code,
                 )
-                last_error.status_code = response.status_code
                 if attempt >= 2:
                     raise last_error
                 time.sleep(2**attempt)
