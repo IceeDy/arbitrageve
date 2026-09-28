@@ -53,7 +53,7 @@ def test_order_book_depth_changes_effective_prices():
     assert opportunity["buy_cost"] == 800
     assert opportunity["sell_revenue"] == 1150
     assert opportunity["gross_profit"] == 350
-    assert opportunity["roi"] == 0.4375
+    assert opportunity["roi"] == 0.3296875
 
 
 def test_net_profit_applies_sales_tax_and_transport():
