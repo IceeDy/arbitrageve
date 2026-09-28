@@ -5,7 +5,9 @@ from arbitrageve.config.settings import settings
 from arbitrageve.db.database import SessionLocal, init_db
 from arbitrageve.esi.routes import RouteClient
 from arbitrageve.market.costs import TradeCosts
+from arbitrageve.market.metrics import ExecutionProfile
 from arbitrageve.services.opportunities import find_opportunities
+from arbitrageve.services.risk import RiskProfile
 
 st.set_page_config(page_title="ArbitrageVE", page_icon="📈", layout="wide")
 init_db()
@@ -29,8 +31,31 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Rota")
-    route_preference = st.selectbox("Preferência", ["Shorter", "Safer", "LessSecure"], format_func=lambda value: {"Shorter": "Mais curta", "Safer": "Mais segura", "LessSecure": "Menos segura"}[value])
+    route_preference = st.selectbox(
+        "Preferência",
+        ["Shorter", "Safer", "LessSecure"],
+        format_func=lambda value: {"Shorter": "Mais curta", "Safer": "Mais segura", "LessSecure": "Menos segura"}[value],
+    )
     security_penalty = st.slider("Penalidade de segurança", 0, 100, 50, 5)
+    allow_lowsec = st.checkbox("Permitir low-sec", value=True)
+    allow_nullsec = st.checkbox("Permitir null-sec", value=False)
+    max_jumps = st.number_input("Máximo de jumps", min_value=0, value=30, step=1)
+
+    st.divider()
+    st.subheader("Execução")
+    fixed_minutes = st.number_input("Tempo fixo por operação (min)", min_value=0.0, value=10.0, step=1.0)
+    minutes_per_jump = st.number_input("Tempo por jump (min)", min_value=0.0, value=2.0, step=0.5)
+    return_trip = st.checkbox("Considerar viagem de retorno", value=False)
+    sort_by = st.selectbox(
+        "Ordenar por",
+        ["isk_per_hour", "net_profit", "roi", "capital_efficiency"],
+        format_func=lambda value: {
+            "isk_per_hour": "ISK/h estimado",
+            "net_profit": "Lucro líquido",
+            "roi": "ROI líquido",
+            "capital_efficiency": "Eficiência do capital",
+        }[value],
+    )
 
     st.divider()
     st.subheader("Custos")
@@ -50,6 +75,17 @@ else:
         transport_isk_per_m3_jump=transport_m3_jump,
         safety_margin_rate=safety_margin,
     )
+    risk_profile = RiskProfile(
+        allow_highsec=True,
+        allow_lowsec=allow_lowsec,
+        allow_nullsec=allow_nullsec,
+        max_jumps=max_jumps,
+    )
+    execution_profile = ExecutionProfile(
+        fixed_minutes=fixed_minutes,
+        minutes_per_jump=minutes_per_jump,
+        return_trip=return_trip,
+    )
 
     with SessionLocal() as session:
         opportunities = find_opportunities(
@@ -64,26 +100,38 @@ else:
             route_client=RouteClient(),
             route_preference=route_preference,
             security_penalty=security_penalty,
+            risk_profile=risk_profile,
+            execution_profile=execution_profile,
         )
 
+    for opportunity in opportunities:
+        opportunity["capital_efficiency"] = (
+            opportunity["net_profit"] / opportunity["buy_cost"]
+            if opportunity["buy_cost"] else 0.0
+        )
+    opportunities.sort(key=lambda item: item[sort_by], reverse=True)
+
     if not opportunities:
-        st.info("Nenhuma oportunidade encontrada. Execute a coleta de mercado e cadastre o SDE dos itens.")
+        st.info("Nenhuma oportunidade encontrada. Execute a coleta de mercado e carregue o SDE para habilitar os filtros de segurança.")
     else:
         st.metric("Oportunidades", len(opportunities))
         st.dataframe(
             [
                 {
                     "Item": item["name"],
+                    "Rota": item["route_class"],
                     "Qtd": item["quantity"],
                     "Compra média": f'{item["avg_buy_price"]:,.2f}',
                     "Venda média": f'{item["avg_sell_price"]:,.2f}',
                     "Investido": f'{item["buy_cost"]:,.0f}',
-                    "Receita": f'{item["sell_revenue"]:,.0f}',
-                    "Taxas": f'{item["total_costs"]:,.0f}',
-                    "Transporte": f'{item["transport_cost"]:,.0f}',
                     "Lucro líquido": f'{item["net_profit"]:,.0f}',
-                    "ROI líquido": f'{item["roi"]:.2%}',
+                    "ROI": f'{item["roi"]:.2%}',
+                    "ISK/h": f'{item["isk_per_hour"]:,.0f}',
+                    "Ef. capital": f'{item["capital_efficiency"]:.2%}',
                     "Jumps": item["jumps"],
+                    "Segurança mín.": f'{item["min_security_status"]:.2f}',
+                    "Low-sec": item["lowsec_systems"],
+                    "Null-sec": item["nullsec_systems"],
                     "m³": f'{item["volume_m3"]:,.1f}',
                 }
                 for item in opportunities
