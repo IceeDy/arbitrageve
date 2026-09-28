@@ -1,20 +1,48 @@
 # ArbitrageVE
 
-EVE Online market arbitrage scanner.
+EVE Online market arbitrage scanner focused on executable cross-region opportunities.
 
-## Architecture
+## Current architecture
 
-- ESI client and market collector
-- SQLite + SQLAlchemy persistence
-- SDE integration point
-- Cross-region arbitrage engine
-- Streamlit dashboard
+- **ESI client** with retries and market pagination
+- **SQLite + SQLAlchemy** persistence
+- **Market order schema** with price, volume, location, side and collection timestamp
+- **Cross-region arbitrage engine** constrained by capital and cargo
+- **Streamlit dashboard** for scanning opportunities
+- **SDE integration point** for item names and volumes
 
-Initial target markets: Amarr (Domain) and Jita (The Forge).
+Initial target markets:
 
-## Run
+- Jita — The Forge
+- Amarr — Domain
+
+## Setup
+
+Python 3.13+:
 
 ```bash
-pip install -e .
+python -m venv .venv
+python -m pip install -e ".[dev]"
+```
+
+Create `.env` from `.env.example`, then:
+
+```bash
 streamlit run streamlit_app/app.py
 ```
+
+Collect the initial market snapshot:
+
+```bash
+python scripts/collect_market.py
+```
+
+Run tests:
+
+```bash
+pytest
+```
+
+## Next milestone
+
+Implement the SDE loader and a proper market snapshot/history strategy. Then add route cost, taxes/fees, order depth and a ranking model based on the actual ISK available for the Alpha/Omega progression.
