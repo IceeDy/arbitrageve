@@ -138,6 +138,7 @@ else:
             st.write("As etapas abaixo mostram onde as oportunidades estão sendo eliminadas.")
             labels = {
                 "market_types": "Tipos de mercado analisados",
+                "candidate_pairs": "Pares de estações avaliados",
                 "with_source_orders": "Com ordem de venda na origem",
                 "with_destination_orders": "Com ordem de compra no destino",
                 "with_both_sides": "Com os dois lados",
