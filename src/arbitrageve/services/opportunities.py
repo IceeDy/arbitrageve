@@ -226,6 +226,8 @@ def find_opportunities(
 
     route_cache = {}
     system_cache = {}
+    route_requests = 0
+    route_rate_limited = False
 
     for type_id in item_ids:
         item = session.get(Item, type_id)
