@@ -69,7 +69,6 @@ class ESIClient:
                     retry_after=response.headers.get("Retry-After"),
                     rate_limit_headers=rate_limit_headers,
                 )
-                raise error
 
             # Retry transient server failures, but not client-side errors.
             if 500 <= response.status_code < 600:
