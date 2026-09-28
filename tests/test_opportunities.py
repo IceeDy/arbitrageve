@@ -1,8 +1,11 @@
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import Item, MarketOrder
 from arbitrageve.services.opportunities import find_opportunities
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 
 def test_order_book_depth_changes_effective_prices():
@@ -279,13 +282,11 @@ def test_liquidity_class_uses_absolute_depth_and_book_coverage():
 
 
 def test_stale_market_snapshot_is_rejected():
-    from datetime import datetime, timedelta
-
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
-    collected_at = datetime.now() - timedelta(hours=2)
+    collected_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)
     session.add(Item(type_id=41, name="Stale Market Test", volume=1.0))
     session.add_all(
         [
