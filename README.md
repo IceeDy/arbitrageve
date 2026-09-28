@@ -12,7 +12,7 @@ EVE Online market arbitrage scanner focused on executable cross-region opportuni
 - **Net profitability model** with sales tax, optional broker fee, transport and safety margin
 - **Route-aware scanning** using the systems attached to the selected market locations
 - **Streamlit dashboard** for scanning and configuring trade costs
-- **SDE integration point** for item names and volumes
+- **Official EVE SDE loader** for item names and volumes
 
 Initial target markets:
 
@@ -62,10 +62,22 @@ Transport can be represented as a flat trip cost plus an ISK/m³/jump component.
 - Quantity is limited by capital, cargo capacity and available order-book volume.
 - Results are ranked by **net profit**, after modeled costs.
 
+## SDE and market refresh
+
+Load the official EVE SDE into the local SQLite database:
+
+```bash
+python scripts/load_sde.py
+```
+
+The loader downloads the latest official JSONL SDE archive and imports type names and volumes. The SDE is published by CCP and changes with game updates. citeturn0search0turn0search2
+
+Market collection now fetches every page before replacing the previous region snapshot, so orders that disappeared from ESI are removed instead of remaining as stale opportunities. ESI market orders are cached by CCP for five minutes, so the collector should not poll the same region more frequently than useful. citeturn0search9turn0search11
+
 ## Next milestones
 
-1. Load the official EVE SDE for item names and volumes.
-2. Replace mutable regional order data with explicit market snapshots and stale-order cleanup.
-3. Add character skills/standings profiles for automatic tax and broker-fee presets.
-4. Add route safety settings and hauling-risk assumptions.
-5. Add ISK/hour and capital-turnover ranking after recording execution time/history.
+1. Add character skills/standings profiles for automatic tax and broker-fee presets.
+2. Add route safety settings and hauling-risk assumptions.
+3. Add station/system names and security status from SDE.
+4. Add ISK/hour and capital-turnover ranking after recording execution time/history.
+5. Add execution tracking so realized results can be compared with scanner estimates.
