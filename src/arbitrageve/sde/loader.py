@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 
 from sqlalchemy.orm import Session
 
-from arbitrageve.db.models import Item
+from arbitrageve.db.models import Item, SolarSystem
 
 LATEST_SDE_URL = (
     "https://developers.eveonline.com/static-data/"
@@ -48,6 +48,34 @@ def load_types_from_archive(archive_path: Path, session: Session) -> int:
                 if not name or volume is None:
                     continue
                 session.merge(Item(type_id=type_id, name=str(name), volume=float(volume)))
+                count += 1
+    session.commit()
+    return count
+
+
+def load_solar_systems_from_archive(archive_path: Path, session: Session) -> int:
+    """Load solar-system names and security status from the official SDE."""
+    with zipfile.ZipFile(archive_path) as archive:
+        member = _find_member(archive, "mapSolarSystems.jsonl")
+        count = 0
+        with archive.open(member) as stream:
+            for raw_line in stream:
+                if not raw_line.strip():
+                    continue
+                record = json.loads(raw_line)
+                system_id = int(record["_key"])
+                value = record["_value"]
+                name = value.get("name")
+                security_status = value.get("securityStatus")
+                if not name or security_status is None:
+                    continue
+                session.merge(
+                    SolarSystem(
+                        system_id=system_id,
+                        name=str(name),
+                        security_status=float(security_status),
+                    )
+                )
                 count += 1
     session.commit()
     return count
