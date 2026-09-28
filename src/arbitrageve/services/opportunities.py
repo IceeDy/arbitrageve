@@ -2,7 +2,6 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
-from arbitrageve.esi.client import ESIRequestError
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
 from arbitrageve.market.metrics import ExecutionProfile, estimate_isk_per_hour
 from arbitrageve.services.risk import RiskProfile, analyze_route, route_allowed
@@ -113,18 +112,12 @@ def _route_for_lane(route_client, route_cache, origin, destination, preference, 
         route_cache[cache_key] = ([origin], 0)
         return route_cache[cache_key]
 
-    try:
-        route = route_client.route(
-            origin,
-            destination,
-            preference=preference,
-            security_penalty=security_penalty,
-        )
-    except ESIRequestError as exc:
-        if exc.status_code == 429:
-            raise RuntimeError("ESI route endpoint rate limited") from exc
-        raise
-
+    route = route_client.route(
+        origin,
+        destination,
+        preference=preference,
+        security_penalty=security_penalty,
+    )
     route_cache[cache_key] = (route, max(0, len(route) - 1))
     return route_cache[cache_key]
 
@@ -180,7 +173,6 @@ def find_opportunities(
     diagnostics=None,
     sort_by="net_profit",
     max_candidate_lanes=4,
-    max_route_requests=100,
 ):
     """Find cross-region opportunities across multiple station lanes."""
     costs = costs or TradeCosts()
@@ -194,8 +186,6 @@ def find_opportunities(
         raise ValueError(f"unsupported sort_by: {sort_by}")
     if max_candidate_lanes < 1:
         raise ValueError("max_candidate_lanes must be positive")
-    if max_route_requests < 1:
-        raise ValueError("max_route_requests must be positive")
 
     item_ids = session.execute(
         select(MarketOrder.type_id)
@@ -220,16 +210,10 @@ def find_opportunities(
             "profit_pass": 0, "final_opportunities": 0,
             "candidate_pairs": 0,
             "rejected_before_route": 0,
-            "route_rate_limited": 0,
-            "routes_skipped_rate_limit": 0,
-            "routes_skipped_budget": 0,
         })
 
     route_cache = {}
     system_cache = {}
-    route_requests = 0
-    route_rate_limited = False
-
     for type_id in item_ids:
         item = session.get(Item, type_id)
         source_orders = session.scalars(select(MarketOrder).where(and_(
@@ -289,42 +273,10 @@ def find_opportunities(
                         diagnostics["rejected_before_route"] += 1
                     continue
 
-                if route_rate_limited:
-                    if diagnostics is not None:
-                        diagnostics["routes_skipped_rate_limit"] += 1
-                    continue
-                if route_client and origin_system != destination_system:
-                    if route_requests >= max_route_requests:
-                        if diagnostics is not None:
-                            diagnostics["routes_skipped_budget"] += 1
-                        continue
-
-                route_key = (
-                    origin_system,
-                    destination_system,
-                    route_preference,
-                    security_penalty,
+                route, jumps = _route_for_lane(
+                    route_client, route_cache, origin_system, destination_system,
+                    route_preference, security_penalty
                 )
-                needs_route_request = (
-                    route_client
-                    and origin_system != destination_system
-                    and route_key not in route_cache
-                )
-                try:
-                    route, jumps = _route_for_lane(
-                        route_client, route_cache, origin_system, destination_system,
-                        route_preference, security_penalty
-                    )
-                    if needs_route_request:
-                        route_requests += 1
-                except RuntimeError as exc:
-                    if str(exc) == "ESI route endpoint rate limited":
-                        route_rate_limited = True
-                        if diagnostics is not None:
-                            diagnostics["route_rate_limited"] += 1
-                            diagnostics["routes_skipped_rate_limit"] += 1
-                        continue
-                    raise
 
                 if diagnostics is not None:
                     diagnostics["routes_checked"] += 1
