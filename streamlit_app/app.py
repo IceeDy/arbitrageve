@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# Prefer the repository source tree over any cached installed package on Streamlit Cloud.
+SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 import streamlit as st
 
 from arbitrageve.config.regions import DOMAIN, REGIONS, THE_FORGE
