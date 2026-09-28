@@ -83,6 +83,7 @@ def find_opportunities(
     security_penalty: int = 50,
     risk_profile: RiskProfile | None = None,
     execution_profile: ExecutionProfile | None = None,
+    diagnostics: dict[str, int] | None = None,
 ) -> list[dict]:
     """Find executable cross-region opportunities using order-book depth."""
     costs = costs or TradeCosts()
@@ -99,6 +100,24 @@ def find_opportunities(
     ).scalars().all()
 
     results = []
+    if diagnostics is not None:
+        diagnostics.clear()
+        diagnostics.update(
+            {
+                "market_types": len(item_ids),
+                "with_source_orders": 0,
+                "with_destination_orders": 0,
+                "with_both_sides": 0,
+                "with_valid_volume": 0,
+                "routes_checked": 0,
+                "routes_allowed": 0,
+                "quantity_executable": 0,
+                "gross_profit_positive": 0,
+                "roi_pass": 0,
+                "profit_pass": 0,
+                "final_opportunities": 0,
+            }
+        )
     route_cache: dict[tuple[int, int, str, int], tuple[list[int], int]] = {}
     system_cache: dict[int, SolarSystem | None] = {}
 
@@ -130,12 +149,20 @@ def find_opportunities(
             .order_by(MarketOrder.price.desc())
         ).all()
 
+        if source_orders and diagnostics is not None:
+            diagnostics["with_source_orders"] += 1
+        if destination_orders and diagnostics is not None:
+            diagnostics["with_destination_orders"] += 1
         if not source_orders or not destination_orders:
             continue
+        if diagnostics is not None:
+            diagnostics["with_both_sides"] += 1
 
         volume = item.volume if item else 0.0
         if volume <= 0 or cargo_m3 <= 0 or capital_isk <= 0:
             continue
+        if diagnostics is not None:
+            diagnostics["with_valid_volume"] += 1
 
         source_lane = (source_orders[0].system_id, source_orders[0].location_id)
         destination_lane = (destination_orders[0].system_id, destination_orders[0].location_id)
@@ -158,6 +185,8 @@ def find_opportunities(
             route_cache[cache_key] = (route, max(0, len(route) - 1))
 
         route, jumps = route_cache[cache_key]
+        if diagnostics is not None:
+            diagnostics["routes_checked"] += 1
         systems = []
         for system_id in route:
             if system_id not in system_cache:
@@ -169,6 +198,8 @@ def find_opportunities(
         risk["jumps"] = jumps
         if not route_allowed(risk_profile, risk):
             continue
+        if diagnostics is not None:
+            diagnostics["routes_allowed"] += 1
 
         source_available = sum(o.volume_remain for o in source_orders)
         destination_available = sum(o.volume_remain for o in destination_orders)
@@ -185,6 +216,8 @@ def find_opportunities(
         )
         if quantity <= 0:
             continue
+        if diagnostics is not None:
+            diagnostics["quantity_executable"] += 1
 
         _, spent = _consume_orders(source_orders, quantity)
         _, revenue = _sell_orders(destination_orders, quantity)
@@ -197,8 +230,16 @@ def find_opportunities(
             estimated_minutes *= 2
         isk_per_hour = estimate_isk_per_hour(net_profit, jumps, execution_profile)
 
-        if roi < min_roi or net_profit < min_profit_isk:
+        if gross_profit > 0 and diagnostics is not None:
+            diagnostics["gross_profit_positive"] += 1
+        if roi < min_roi:
             continue
+        if diagnostics is not None:
+            diagnostics["roi_pass"] += 1
+        if net_profit < min_profit_isk:
+            continue
+        if diagnostics is not None:
+            diagnostics["profit_pass"] += 1
 
         results.append(
             {
@@ -237,4 +278,7 @@ def find_opportunities(
             }
         )
 
-    return sorted(results, key=lambda opportunity: opportunity["net_profit"], reverse=True)[:limit]
+    results = sorted(results, key=lambda opportunity: opportunity["net_profit"], reverse=True)[:limit]
+    if diagnostics is not None:
+        diagnostics["final_opportunities"] = len(results)
+    return results
