@@ -27,7 +27,7 @@ class RouteClient:
                     break
 
         if not isinstance(payload, list):
-            raise ValueError(
+            raise TypeError(
                 f"Unexpected ESI route response: {type(payload).__name__}: "
                 f"{payload!r}"
             )
