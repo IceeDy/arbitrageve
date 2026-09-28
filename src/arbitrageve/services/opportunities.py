@@ -2,6 +2,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
+from arbitrageve.esi.client import ESIRequestError
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
 from arbitrageve.market.metrics import ExecutionProfile, estimate_isk_per_hour
 from arbitrageve.services.risk import RiskProfile, analyze_route, route_allowed
@@ -119,8 +120,8 @@ def _route_for_lane(route_client, route_cache, origin, destination, preference, 
             preference=preference,
             security_penalty=security_penalty,
         )
-    except Exception as exc:
-        if getattr(exc, "status_code", None) == 429:
+    except ESIRequestError as exc:
+        if exc.status_code == 429:
             raise RuntimeError("ESI route endpoint rate limited") from exc
         raise
 
