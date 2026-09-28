@@ -7,7 +7,6 @@ from arbitrageve.db.database import Base
 from arbitrageve.db.models import Item, MarketOrder
 from arbitrageve.services.opportunities import find_opportunities
 
-
 FRESH_COLLECTED_AT = datetime.now(UTC).replace(tzinfo=None)
 
 
