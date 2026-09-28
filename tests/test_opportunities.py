@@ -195,3 +195,84 @@ def test_sort_by_applies_before_limit():
 
     assert len(result) == 1
     assert result[0]["name"] == "High ROI"
+
+
+def test_capital_sizing_includes_all_modeled_trade_costs():
+    from arbitrageve.market.costs import TradeCosts
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add(Item(type_id=39, name="Capital Test", volume=1.0))
+    session.add_all(
+        [
+            MarketOrder(
+                order_id=41, region_id=10000002, system_id=1, location_id=10,
+                type_id=39, price=100, volume_remain=10, volume_total=10,
+                is_buy_order=False, collected_at=None,
+            ),
+            MarketOrder(
+                order_id=42, region_id=10000043, system_id=2, location_id=20,
+                type_id=39, price=150, volume_remain=10, volume_total=10,
+                is_buy_order=True, collected_at=None,
+            ),
+        ]
+    )
+    session.commit()
+
+    result = find_opportunities(
+        session,
+        10000002,
+        10000043,
+        capital_isk=1_000,
+        cargo_m3=10,
+        min_roi=0.0,
+        min_profit_isk=0,
+        costs=TradeCosts(sales_tax_rate=0.10, transport_flat_isk=50),
+    )
+
+    assert len(result) == 1
+    assert result[0]["quantity"] == 8
+    assert result[0]["buy_cost"] == 800
+    assert result[0]["total_costs"] == 170
+    assert result[0]["net_profit"] == 230
+
+
+def test_liquidity_class_uses_absolute_depth_and_book_coverage():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add(Item(type_id=40, name="Liquidity Class Test", volume=1.0))
+    session.add_all(
+        [
+            MarketOrder(
+                order_id=51, region_id=10000002, system_id=1, location_id=10,
+                type_id=40, price=100, volume_remain=2000, volume_total=2000,
+                is_buy_order=False, collected_at=None,
+            ),
+            MarketOrder(
+                order_id=52, region_id=10000043, system_id=2, location_id=20,
+                type_id=40, price=150, volume_remain=2000, volume_total=2000,
+                is_buy_order=True, collected_at=None,
+            ),
+        ]
+    )
+    session.commit()
+
+    result = find_opportunities(
+        session,
+        10000002,
+        10000043,
+        capital_isk=500_000,
+        cargo_m3=100,
+        min_roi=0.0,
+        min_profit_isk=0,
+    )
+
+    assert len(result) == 1
+    assert result[0]["quantity"] == 100
+    assert result[0]["book_capacity"] == 2000
+    assert result[0]["book_coverage"] == 0.05
+    assert result[0]["liquidity_class"] == "Média"
