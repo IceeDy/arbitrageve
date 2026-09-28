@@ -1,5 +1,5 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from arbitrageve.db.models import SolarSystem
 
@@ -76,6 +76,6 @@ def route_allowed(profile: RiskProfile, analysis: dict) -> bool:
         return False
     if analysis.get("nullsec_systems", 0) and not profile.allow_nullsec:
         return False
-    if analysis.get("highsec_systems", 0) and not profile.allow_highsec:
-        return False
-    return True
+    return not (
+        analysis.get("highsec_systems", 0) and not profile.allow_highsec
+    )
