@@ -59,6 +59,12 @@ with st.sidebar:
     fixed_minutes = st.number_input("Tempo fixo por operação (min)", min_value=0.0, value=10.0, step=1.0)
     minutes_per_jump = st.number_input("Tempo por jump (min)", min_value=0.0, value=2.0, step=0.5)
     return_trip = st.checkbox("Considerar viagem de retorno", value=False)
+    execution_filter = st.multiselect(
+        "Classe de execução",
+        ["Escalável", "Executável", "Especulativa"],
+        default=["Escalável", "Executável", "Especulativa"],
+        help="Filtra operações pela capacidade de execução calculada a partir da quantidade e profundidade do book.",
+    )
     sort_by = st.selectbox(
         "Ordenar por",
         ["isk_per_hour", "net_profit", "roi", "capital_efficiency"],
@@ -168,37 +174,72 @@ else:
                 hide_index=True,
             )
     else:
-        st.metric("Oportunidades", len(opportunities))
-        st.dataframe(
-            [
+        filtered = [
+            item for item in opportunities
+            if item.get("execution_class", "Executável") in execution_filter
+        ]
+        st.metric("Oportunidades", len(filtered), delta=f"{len(opportunities) - len(filtered)} ocultas pelo filtro" if len(filtered) != len(opportunities) else None)
+
+        if not filtered:
+            st.info("Nenhuma oportunidade corresponde ao filtro de execução selecionado.")
+        else:
+            total_required = sum(item["capital_required"] for item in filtered)
+            scalable_count = sum(item.get("scalable", False) for item in filtered)
+            speculative_count = sum(item.get("execution_class") == "Especulativa" for item in filtered)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Capital necessário", f"{total_required:,.0f} ISK")
+            c2.metric("Escaláveis", scalable_count)
+            c3.metric("Especulativas", speculative_count)
+
+            rows = [
                 {
                     "Item": item["name"],
+                    "Execução": item.get("execution_class", "Executável"),
                     "Rota": item["route_class"],
                     "Origem": f'{item["source_system_name"]} (loc {item["source_location_id"]})',
                     "Destino": f'{item["destination_system_name"]} (loc {item["destination_location_id"]})',
                     "Qtd": item["quantity"],
-                    "Compra média": f'{item["avg_buy_price"]:,.2f}',
-                    "Venda média": f'{item["avg_sell_price"]:,.2f}',
-                    "Investido": f'{item["buy_cost"]:,.0f}',
-                    "Lucro líquido": f'{item["net_profit"]:,.0f}',
-                    "ROI": f'{item["roi"]:.2%}',
-                    "ISK/h": f'{item["isk_per_hour"]:,.0f}',
-                    "Ef. capital": f'{item["capital_efficiency"]:.2%}',
-                    "Spread": f'{item["spread_pct"]:.2%}',
+                    "Lucro/unid.": item.get("profit_per_unit", 0.0),
+                    "Capital necessário": item.get("capital_required", 0.0),
+                    "Compra média": item["avg_buy_price"],
+                    "Venda média": item["avg_sell_price"],
+                    "Investido": item["buy_cost"],
+                    "Lucro líquido": item["net_profit"],
+                    "ROI": item["roi"],
+                    "ISK/h": item["isk_per_hour"],
+                    "Ef. capital": item["capital_efficiency"],
+                    "Spread": item["spread_pct"],
                     "Liquidez": item.get("liquidity_class", "Baixa"),
-                    "Idade book (min)": f'{item["market_age_minutes"]:.1f}' if item.get("market_age_minutes") is not None else "N/D",
-                    "Cobertura book": f'{item["book_coverage"]:.2%}',
+                    "Cobertura book": item["book_coverage"],
                     "Book mínimo": item["book_capacity"],
-                    "Book origem": item["source_book_volume"],
-                    "Book destino": item["destination_book_volume"],
                     "Jumps": item["jumps"],
-                    "Segurança mín.": f'{item["min_security_status"]:.2f}',
+                    "Segurança mín.": item["min_security_status"],
                     "Low-sec": item["lowsec_systems"],
                     "Null-sec": item["nullsec_systems"],
-                    "m³": f'{item["volume_m3"]:,.1f}',
+                    "m³": item["volume_m3"],
+                    "Idade book (min)": item.get("market_age_minutes"),
                 }
-                for item in opportunities
-            ],
-            width="stretch",
-            hide_index=True,
-        )
+                for item in filtered
+            ]
+            st.dataframe(
+                rows,
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "Qtd": st.column_config.NumberColumn(format="%d"),
+                    "Lucro/unid.": st.column_config.NumberColumn(format="%.2f ISK"),
+                    "Capital necessário": st.column_config.NumberColumn(format="%,.0f ISK"),
+                    "Compra média": st.column_config.NumberColumn(format="%.2f ISK"),
+                    "Venda média": st.column_config.NumberColumn(format="%.2f ISK"),
+                    "Investido": st.column_config.NumberColumn(format="%,.0f ISK"),
+                    "Lucro líquido": st.column_config.NumberColumn(format="%,.0f ISK"),
+                    "ROI": st.column_config.NumberColumn(format="%.2%%"),
+                    "ISK/h": st.column_config.NumberColumn(format="%,.0f ISK/h"),
+                    "Ef. capital": st.column_config.NumberColumn(format="%.2%%"),
+                    "Spread": st.column_config.NumberColumn(format="%.2%%"),
+                    "Cobertura book": st.column_config.NumberColumn(format="%.2%%"),
+                    "Segurança mín.": st.column_config.NumberColumn(format="%.2f"),
+                    "m³": st.column_config.NumberColumn(format="%.1f"),
+                    "Idade book (min)": st.column_config.NumberColumn(format="%.1f"),
+                },
+            )
