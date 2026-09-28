@@ -8,7 +8,7 @@ class RouteClient:
     def route(self, origin, destination, preference="Shorter", security_penalty=50):
         """Return the ESI route as a list of solar-system IDs."""
         response = self.client.post(
-            f"route/{origin}/{destination}/",
+            f"route/{origin}/{destination}",
             json={
                 "preference": preference,
                 "security_penalty": security_penalty,
