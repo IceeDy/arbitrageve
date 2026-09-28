@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
@@ -105,6 +107,7 @@ def find_opportunities(
     diagnostics=None,
     sort_by="net_profit",
     max_candidate_lanes=4,
+    max_market_age_minutes=60.0,
 ):
     """Find cross-region opportunities across multiple station lanes."""
     costs = costs or TradeCosts()
@@ -118,6 +121,8 @@ def find_opportunities(
         raise ValueError(f"unsupported sort_by: {sort_by}")
     if max_candidate_lanes < 1:
         raise ValueError("max_candidate_lanes must be positive")
+    if max_market_age_minutes < 0:
+        raise ValueError("max_market_age_minutes must be non-negative")
 
     item_ids = session.execute(
         select(MarketOrder.type_id)
@@ -143,6 +148,7 @@ def find_opportunities(
             "candidate_pairs": 0,
             "rejected_before_route": 0,
             "rejected_capital": 0,
+            "rejected_stale_market": 0,
         })
 
     route_cache = {}
@@ -191,6 +197,24 @@ def find_opportunities(
 
                 origin_system, origin_location = source_lane
                 destination_system, destination_location = destination_lane
+
+                collected_times = [
+                    order.collected_at
+                    for order in (*source_book, *destination_book)
+                    if order.collected_at is not None
+                ]
+                market_age_minutes = None
+                if collected_times:
+                    now = datetime.now(timezone.utc).replace(tzinfo=None)
+                    oldest_snapshot = min(collected_times)
+                    market_age_minutes = max(
+                        0.0, (now - oldest_snapshot).total_seconds() / 60.0
+                    )
+                    if market_age_minutes > max_market_age_minutes:
+                        if diagnostics is not None:
+                            diagnostics["rejected_stale_market"] += 1
+                        continue
+
                 # Use an optimistic price-only ROI bound before calling ESI.
                 best_buy = source_book[0].price
                 best_sell = destination_book[0].price
@@ -320,6 +344,7 @@ def find_opportunities(
                     "book_capacity": book_capacity,
                     "book_coverage": book_coverage,
                     "liquidity_class": liquidity_class,
+                    "market_age_minutes": market_age_minutes,
                     "estimated_minutes": estimated_minutes, "isk_per_hour": isk_per_hour,
                     "volume_m3": quantity * volume, "jumps": jumps,
                     "route_system_ids": route, "route_class": risk["route_class"],
