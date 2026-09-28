@@ -14,7 +14,7 @@ EVE Online market arbitrage scanner focused on executable cross-region opportuni
 - **Execution model** with configurable operation time, minutes per jump and optional return trip
 - **ISK/hour and capital-efficiency metrics** for ranking opportunities
 - **Streamlit dashboard** for scanning and configuration
-- **Official EVE SDE loader** for item names, volumes, system names and security status
+- **Official EVE SDE loader** for item names, volumes, system names, security status and static stargate connections
 
 Initial target markets:
 
@@ -42,7 +42,7 @@ Collect the initial market snapshot:
 python scripts/collect_market.py
 ```
 
-Load item and solar-system metadata:
+Load item, solar-system and stargate metadata:
 
 ```bash
 python scripts/load_sde.py
@@ -62,7 +62,7 @@ The result includes gross profit, modeled costs, net profit, ROI, capital effici
 
 ## Route and risk model
 
-Routes are calculated through ESI using the route preference (`Shorter`, `Safer` or `LessSecure`) and security penalty. The route result is then inspected against the local SDE metadata.
+Routes are calculated locally from the official SDE stargate graph using the route preference (`Shorter`, `Safer` or `LessSecure`) and security penalty. This avoids making one ESI `/route` request per candidate pair; ESI remains available as an API client for other operations.
 
 The dashboard can block low-sec and null-sec routes and impose a maximum jump count. Security classification follows EVE's documented thresholds: high-sec at security status >= 0.45, low-sec above 0 and below 0.45, and null-sec at or below 0.0.
 
