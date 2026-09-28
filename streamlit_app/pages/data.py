@@ -4,7 +4,9 @@ from arbitrageve.config.regions import DOMAIN, REGIONS, THE_FORGE
 from arbitrageve.db.database import SessionLocal, init_db
 from arbitrageve.market.collector import collect_region
 from arbitrageve.sde.loader import (
+    LOADER_VERSION,
     download_latest_sde,
+    inspect_types_archive,
     load_solar_systems_from_archive,
     load_types,
 )
@@ -19,6 +21,7 @@ st.write(
     "O SDE fornece os tipos de itens e os sistemas solares usados pelo scanner "
     "para nomes, volumes e análise de segurança."
 )
+st.caption(f"Loader SDE: {LOADER_VERSION}")
 
 if st.button("Atualizar SDE", type="primary"):
     progress = st.progress(0, text="Baixando SDE oficial...")
@@ -27,14 +30,36 @@ if st.button("Atualizar SDE", type="primary"):
 
         archive = Path("/tmp/arbitrageve/eve-sde-latest.zip")
         download_latest_sde(archive)
-        progress.progress(50, text="SDE baixado. Importando tipos e sistemas...")
+        progress.progress(35, text="SDE baixado. Inspecionando types.jsonl...")
+
+        diagnostics = inspect_types_archive(archive)
+        st.info(
+            f"types.jsonl: {diagnostics['member']} | "
+            f"amostra: {diagnostics['sample_lines']} linhas | "
+            f"_key: {diagnostics['sample_keyed']} | "
+            f"com nome: {diagnostics['sample_named']}"
+        )
+
+        if diagnostics["sample_named"] == 0:
+            st.error("Nenhum nome foi encontrado nos primeiros 100 registros de types.jsonl.")
+            st.json(diagnostics["samples"])
+            progress.empty()
+            st.stop()
+
+        progress.progress(60, text="Importando tipos e sistemas...")
         with SessionLocal() as session:
             item_count = load_types(archive, session)
             system_count = load_solar_systems_from_archive(archive, session)
+
         progress.progress(100, text="SDE carregado.")
         st.success(
             f"SDE carregado: {item_count:,} tipos e {system_count:,} sistemas."
         )
+        if item_count == 0:
+            st.error(
+                "A inspeção encontrou nomes, mas a importação retornou 0. "
+                "Isso indica erro de parsing/execução diferente do diagnóstico."
+            )
     except Exception as exc:
         progress.empty()
         st.error(f"Falha ao atualizar o SDE: {exc}")
