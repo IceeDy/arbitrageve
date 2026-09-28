@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 
 from sqlalchemy.orm import Session
 
-from arbitrageve.db.models import Item, SolarSystem
+from arbitrageve.db.models import Item, SolarSystem, Stargate
 
 LATEST_SDE_URL = (
     "https://developers.eveonline.com/static-data/"
@@ -169,6 +169,37 @@ def load_solar_systems_from_archive(archive_path: Path, session: Session) -> int
                         system_id=system_id,
                         name=name,
                         security_status=float(security_status),
+                    )
+                )
+                count += 1
+
+    session.commit()
+    return count
+
+
+def load_stargates_from_archive(archive_path: Path, session: Session) -> int:
+    """Load static stargate connections from the official SDE."""
+    with zipfile.ZipFile(archive_path) as archive:
+        member = _find_member(archive, "mapStargates.jsonl")
+        count = 0
+        with archive.open(member) as stream:
+            for raw_line in stream:
+                if not raw_line.strip():
+                    continue
+                record = json.loads(raw_line)
+                if "_key" not in record:
+                    continue
+                value = _value(record)
+                destination = value.get("destination") or {}
+                system_id = value.get("solarSystemID")
+                destination_system_id = destination.get("solarSystemID")
+                if system_id is None or destination_system_id is None:
+                    continue
+                session.merge(
+                    Stargate(
+                        stargate_id=int(record["_key"]),
+                        system_id=int(system_id),
+                        destination_system_id=int(destination_system_id),
                     )
                 )
                 count += 1
