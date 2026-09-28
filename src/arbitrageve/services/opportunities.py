@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, select
+
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
 from arbitrageve.market.metrics import ExecutionProfile, estimate_isk_per_hour
