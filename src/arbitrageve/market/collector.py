@@ -6,22 +6,32 @@ from arbitrageve.db.models import MarketOrder
 from arbitrageve.esi.market import MarketClient
 
 
-def collect_region(session, region_id: int, client: MarketClient | None = None) -> int:
-    """Replace a region with one complete market snapshot.
+def collect_region(
+    session,
+    region_id: int,
+    client: MarketClient | None = None,
+    progress_callback=None,
+) -> int:
+    """Replace a region with one complete ESI market snapshot.
 
-    All pages are fetched before touching the existing database rows. This
-    prevents a failed page request from leaving the database partially
-    refreshed. Once every page is available, old rows for the region are
-    deleted and replaced atomically in the current transaction.
+    Page 1 is used to discover the current page count and is then reused,
+    avoiding a duplicate request. Existing rows are deleted only after every
+    page has been fetched successfully.
     """
     client = client or MarketClient()
     stamp = datetime.now(timezone.utc).replace(tzinfo=None)
-    collected = []
 
-    _, pages = client.get_orders(region_id, page=1)
-    for page in range(1, pages + 1):
+    first_page, pages = client.get_orders(region_id, page=1)
+    collected = list(first_page)
+
+    if progress_callback:
+        progress_callback(1, pages, len(collected))
+
+    for page in range(2, pages + 1):
         orders, _ = client.get_orders(region_id, page=page)
         collected.extend(orders)
+        if progress_callback:
+            progress_callback(page, pages, len(collected))
 
     session.execute(delete(MarketOrder).where(MarketOrder.region_id == region_id))
 
