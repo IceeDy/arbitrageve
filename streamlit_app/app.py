@@ -173,6 +173,8 @@ else:
                 {
                     "Item": item["name"],
                     "Rota": item["route_class"],
+                    "Origem": item["source_system_name"],
+                    "Destino": item["destination_system_name"],
                     "Qtd": item["quantity"],
                     "Compra média": f'{item["avg_buy_price"]:,.2f}',
                     "Venda média": f'{item["avg_sell_price"]:,.2f}',
