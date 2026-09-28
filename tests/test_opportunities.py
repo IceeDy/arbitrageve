@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -286,7 +286,7 @@ def test_stale_market_snapshot_is_rejected():
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
-    collected_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)
+    collected_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=2)
     session.add(Item(type_id=41, name="Stale Market Test", volume=1.0))
     session.add_all(
         [
