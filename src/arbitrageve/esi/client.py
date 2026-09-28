@@ -42,16 +42,17 @@ class ESIClient:
             if 200 <= response.status_code < 300:
                 return response
 
-            # ESI explicitly uses 429 for rate limiting and 5xx for server
-            # failures. These are the only HTTP statuses we retry.
-            if response.status_code == 429 or 500 <= response.status_code < 600:
-                last_error = ESIRequestError(
-                    f"ESI returned HTTP {response.status_code}: "
-                    f"{response.text[:1000]}"
+            # A 429 is an explicit rate-limit signal. Do not immediately
+            # retry it: repeated retries only create more pressure and can
+            # prolong the rate-limited period. The caller can decide whether
+            # to stop the current scan and try again later.
+            if response.status_code == 429:
+                error = ESIRequestError(
+                    f"ESI returned HTTP 429: {response.text[:1000]}"
                 )
-                last_error.status_code = response.status_code
-                last_error.retry_after = response.headers.get("Retry-After")
-                last_error.rate_limit_headers = {
+                error.status_code = 429
+                error.retry_after = response.headers.get("Retry-After")
+                error.rate_limit_headers = {
                     key: response.headers.get(key)
                     for key in (
                         "X-Ratelimit-Group",
@@ -61,14 +62,18 @@ class ESIClient:
                     )
                     if response.headers.get(key) is not None
                 }
+                raise error
+
+            # Retry transient server failures, but not client-side errors.
+            if 500 <= response.status_code < 600:
+                last_error = ESIRequestError(
+                    f"ESI returned HTTP {response.status_code}: "
+                    f"{response.text[:1000]}"
+                )
+                last_error.status_code = response.status_code
                 if attempt >= 2:
                     raise last_error
-                retry_after = response.headers.get("Retry-After")
-                try:
-                    delay = min(float(retry_after), 30.0) if retry_after else 2**attempt
-                except ValueError:
-                    delay = 2**attempt
-                time.sleep(delay)
+                time.sleep(2**attempt)
                 continue
 
             raise ESIRequestError(
