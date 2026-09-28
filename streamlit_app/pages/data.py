@@ -12,6 +12,7 @@ import streamlit as st
 
 from arbitrageve.config.regions import DOMAIN, REGIONS, THE_FORGE
 from arbitrageve.db.database import SessionLocal, init_db
+from arbitrageve.esi.client import ESIRequestError
 from arbitrageve.market.collector import collect_region
 from arbitrageve.sde.loader import (
     LOADER_VERSION,
@@ -73,7 +74,7 @@ if st.button("Atualizar SDE", type="primary"):
                 "A inspeção encontrou nomes, mas a importação retornou 0. "
                 "Isso indica erro de parsing/execução diferente do diagnóstico."
             )
-    except Exception as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         progress.empty()
         st.error(f"Falha ao atualizar o SDE: {exc}")
 
@@ -101,9 +102,15 @@ if st.button("Atualizar mercado"):
             progress = st.progress(0, text=f"Preparando {REGIONS[region_id]}...")
             status = st.empty()
 
-            def update_progress(page, pages, orders, region_name=REGIONS[region_id]):
+            def update_progress(
+                page,
+                pages,
+                orders,
+                region_name=REGIONS[region_id],
+                progress_bar=progress,
+            ):
                 ratio = page / pages if pages else 1.0
-                progress.progress(
+                progress_bar.progress(
                     min(1.0, ratio),
                     text=f"{region_name}: página {page}/{pages} — {orders:,} ordens",
                 )
@@ -117,7 +124,7 @@ if st.button("Atualizar mercado"):
                     )
                 progress.progress(1.0, text=f"{REGIONS[region_id]} concluído.")
                 status.success(f"{REGIONS[region_id]}: {count:,} ordens armazenadas.")
-            except Exception as exc:
+            except (ESIRequestError, OSError, ValueError, RuntimeError) as exc:
                 progress.empty()
                 status.error(f"{REGIONS[region_id]}: falha na coleta: {exc}")
 

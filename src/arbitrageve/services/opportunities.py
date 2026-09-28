@@ -1,5 +1,7 @@
+import math
+from datetime import UTC, datetime
+
 from sqlalchemy import and_, select
-from sqlalchemy.orm import Session
 
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
@@ -35,6 +37,51 @@ def _sell_orders(orders, quantity: int):
     return sold, revenue
 
 
+def _group_orders_by_lane(orders):
+    lanes = {}
+    for order in orders:
+        lane = (order.system_id, order.location_id)
+        lanes.setdefault(lane, []).append(order)
+    return lanes
+
+
+def _select_candidate_lanes(lanes, *, is_source, max_lanes=8):
+    """Keep a bounded set of liquid, price-competitive station lanes."""
+    summaries = []
+    for lane, orders in lanes.items():
+        ordered = sorted(orders, key=lambda o: o.price, reverse=not is_source)
+        volume = sum(o.volume_remain for o in orders)
+        if volume <= 0:
+            continue
+        summaries.append((lane, ordered, volume))
+
+    summaries.sort(
+        key=lambda x: (x[1][0].price, -x[2])
+        if is_source
+        else (-x[1][0].price, -x[2])
+    )
+    return summaries[:max_lanes]
+
+
+def _route_for_lane(route_client, route_cache, origin, destination, preference, security_penalty):
+    cache_key = (origin, destination, preference, security_penalty)
+    if cache_key in route_cache:
+        return route_cache[cache_key]
+
+    if not route_client or origin == destination:
+        route_cache[cache_key] = ([origin], 0)
+        return route_cache[cache_key]
+
+    route = route_client.route(
+        origin,
+        destination,
+        preference=preference,
+        security_penalty=security_penalty,
+    )
+    route_cache[cache_key] = (route, max(0, len(route) - 1))
+    return route_cache[cache_key]
+
+
 def _max_affordable_quantity(
     source_orders,
     destination_orders,
@@ -51,7 +98,7 @@ def _max_affordable_quantity(
     plus all modeled trade costs. This prevents transport and safety-margin
     assumptions from being ignored when sizing a trade.
     """
-    max_quantity = min(max_quantity, int(cargo_m3 // volume_m3))
+    max_quantity = min(max_quantity, math.floor(cargo_m3 / volume_m3 + 1e-9))
     if max_quantity <= 0:
         return 0
 
@@ -105,6 +152,7 @@ def find_opportunities(
     diagnostics=None,
     sort_by="net_profit",
     max_candidate_lanes=4,
+    max_market_age_minutes=60.0,
 ):
     """Find cross-region opportunities across multiple station lanes."""
     costs = costs or TradeCosts()
@@ -118,6 +166,8 @@ def find_opportunities(
         raise ValueError(f"unsupported sort_by: {sort_by}")
     if max_candidate_lanes < 1:
         raise ValueError("max_candidate_lanes must be positive")
+    if max_market_age_minutes < 0:
+        raise ValueError("max_market_age_minutes must be non-negative")
 
     item_ids = session.execute(
         select(MarketOrder.type_id)
@@ -143,6 +193,7 @@ def find_opportunities(
             "candidate_pairs": 0,
             "rejected_before_route": 0,
             "rejected_capital": 0,
+            "rejected_stale_market": 0,
         })
 
     route_cache = {}
@@ -191,6 +242,24 @@ def find_opportunities(
 
                 origin_system, origin_location = source_lane
                 destination_system, destination_location = destination_lane
+
+                collected_times = [
+                    order.collected_at
+                    for order in (*source_book, *destination_book)
+                    if order.collected_at is not None
+                ]
+                market_age_minutes = None
+                if collected_times:
+                    now = datetime.now(UTC).replace(tzinfo=None)
+                    oldest_snapshot = min(collected_times)
+                    market_age_minutes = max(
+                        0.0, (now - oldest_snapshot).total_seconds() / 60.0
+                    )
+                    if market_age_minutes > max_market_age_minutes:
+                        if diagnostics is not None:
+                            diagnostics["rejected_stale_market"] += 1
+                        continue
+
                 # Use an optimistic price-only ROI bound before calling ESI.
                 best_buy = source_book[0].price
                 best_sell = destination_book[0].price
@@ -252,7 +321,7 @@ def find_opportunities(
 
                 max_quantity = min(
                     source_book_volume, destination_book_volume,
-                    int(cargo_m3 // volume),
+                    math.floor(cargo_m3 / volume + 1e-9),
                 )
                 quantity = _max_affordable_quantity(
                     source_book, destination_book, max_quantity,
@@ -320,6 +389,7 @@ def find_opportunities(
                     "book_capacity": book_capacity,
                     "book_coverage": book_coverage,
                     "liquidity_class": liquidity_class,
+                    "market_age_minutes": market_age_minutes,
                     "estimated_minutes": estimated_minutes, "isk_per_hour": isk_per_hour,
                     "volume_m3": quantity * volume, "jumps": jumps,
                     "route_system_ids": route, "route_class": risk["route_class"],

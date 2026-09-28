@@ -1,8 +1,8 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from runtime import SRC_DIR, load_repo_module
+from runtime import load_repo_module
 
 load_repo_module("arbitrageve.db.database", "arbitrageve/db/database.py")
 load_repo_module("arbitrageve.db.models", "arbitrageve/db/models.py")
@@ -10,10 +10,10 @@ load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
 
 import streamlit as st
 
-from arbitrageve.config.regions import DOMAIN, REGIONS, THE_FORGE
+from arbitrageve.config.regions import REGIONS, THE_FORGE
 from arbitrageve.config.settings import settings
-from arbitrageve.db.models import Stargate
 from arbitrageve.db.database import SessionLocal, init_db
+from arbitrageve.db.models import Stargate
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
 from arbitrageve.sde.routes import LocalRouteClient
@@ -40,6 +40,7 @@ with st.sidebar:
     )
     min_roi = st.slider("ROI líquido mínimo", 0.0, 1.0, 0.05, 0.01)
     min_profit = st.number_input("Lucro líquido mínimo (ISK)", min_value=0.0, value=100_000.0, step=100_000.0)
+    max_market_age = st.number_input("Idade máxima do snapshot (min)", min_value=0.0, value=60.0, step=5.0)
 
     st.divider()
     st.subheader("Rota")
@@ -125,6 +126,7 @@ else:
             execution_profile=execution_profile,
             diagnostics=diagnostics,
             sort_by=sort_by,
+            max_market_age_minutes=max_market_age,
         )
 
     if not opportunities:
@@ -156,6 +158,7 @@ else:
                     {"Etapa": "Rejeitadas: rota desconhecida", "Quantidade": diagnostics.get("rejected_unknown_route", 0)},
                     {"Etapa": "Rejeitadas: outro risco", "Quantidade": diagnostics.get("rejected_other_risk", 0)},
                     {"Etapa": "Rejeitadas: capital insuficiente", "Quantidade": diagnostics.get("rejected_capital", 0)},
+                    {"Etapa": "Rejeitadas: snapshot desatualizado", "Quantidade": diagnostics.get("rejected_stale_market", 0)},
                     {"Etapa": "Rotas vazias", "Quantidade": diagnostics.get("route_empty", 0)},
                     {"Etapa": "Rotas com formato inválido", "Quantidade": diagnostics.get("route_shape_invalid", 0)},
                     {"Etapa": "Sistemas de rota encontrados", "Quantidade": diagnostics.get("route_systems_found", 0)},
@@ -182,7 +185,8 @@ else:
                     "ISK/h": f'{item["isk_per_hour"]:,.0f}',
                     "Ef. capital": f'{item["capital_efficiency"]:.2%}',
                     "Spread": f'{item["spread_pct"]:.2%}',
-                    "Liquidez": item["liquidity_class"],
+                    "Liquidez": item.get("liquidity_class", "Baixa"),
+                    "Idade book (min)": f'{item["market_age_minutes"]:.1f}' if item.get("market_age_minutes") is not None else "N/D",
                     "Cobertura book": f'{item["book_coverage"]:.2%}',
                     "Book mínimo": item["book_capacity"],
                     "Book origem": item["source_book_volume"],

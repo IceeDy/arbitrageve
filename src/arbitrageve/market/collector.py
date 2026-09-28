@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete
 
@@ -27,7 +27,7 @@ def collect_region(
 ) -> int:
     """Replace a region with one complete ESI market snapshot."""
     client = client or MarketClient()
-    stamp = datetime.now(timezone.utc).replace(tzinfo=None)
+    stamp = datetime.now(UTC).replace(tzinfo=None)
 
     first_page, pages = client.get_orders(region_id, page=1)
     collected = list(first_page)
@@ -47,9 +47,7 @@ def collect_region(
     for data in collected:
         issued = data.get("issued")
         if issued:
-            issued = datetime.fromisoformat(
-                issued.replace("Z", "+00:00")
-            ).replace(tzinfo=None)
+            issued = datetime.fromisoformat(issued).replace(tzinfo=None)
 
         session.add(
             MarketOrder(
