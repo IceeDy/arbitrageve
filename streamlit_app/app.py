@@ -28,6 +28,11 @@ with st.sidebar:
     min_profit = st.number_input("Lucro líquido mínimo (ISK)", min_value=0.0, value=100_000.0, step=100_000.0)
 
     st.divider()
+    st.subheader("Rota")
+    route_preference = st.selectbox("Preferência", ["Shorter", "Safer", "LessSecure"], format_func=lambda value: {"Shorter": "Mais curta", "Safer": "Mais segura", "LessSecure": "Menos segura"}[value])
+    security_penalty = st.slider("Penalidade de segurança", 0, 100, 50, 5)
+
+    st.divider()
     st.subheader("Custos")
     sales_tax = st.number_input("Sales tax (%)", min_value=0.0, max_value=100.0, value=7.5, step=0.1) / 100
     broker_fee = st.number_input("Broker fee (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.1) / 100
@@ -57,6 +62,8 @@ else:
             min_profit,
             costs=costs,
             route_client=RouteClient(),
+            route_preference=route_preference,
+            security_penalty=security_penalty,
         )
 
     if not opportunities:
