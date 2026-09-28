@@ -149,8 +149,15 @@ else:
                 "final_opportunities": "Oportunidades finais",
             }
             st.dataframe(
-                [{"Etapa": label, "Quantidade": diagnostics.get(key, 0)} for key, label in labels.items()],
-                use_container_width=True,
+                [{"Etapa": label, "Quantidade": diagnostics.get(key, 0)} for key, label in labels.items()]
+                + [
+                    {"Etapa": "Rejeitadas: máximo de jumps", "Quantidade": diagnostics.get("rejected_max_jumps", 0)},
+                    {"Etapa": "Rejeitadas: null-sec", "Quantidade": diagnostics.get("rejected_nullsec", 0)},
+                    {"Etapa": "Rejeitadas: low-sec", "Quantidade": diagnostics.get("rejected_lowsec", 0)},
+                    {"Etapa": "Rejeitadas: rota desconhecida", "Quantidade": diagnostics.get("rejected_unknown_route", 0)},
+                    {"Etapa": "Rejeitadas: outro risco", "Quantidade": diagnostics.get("rejected_other_risk", 0)},
+                ],
+                width="stretch",
                 hide_index=True,
             )
     else:
