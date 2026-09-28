@@ -87,6 +87,7 @@ else:
         return_trip=return_trip,
     )
 
+    diagnostics = {}
     with SessionLocal() as session:
         opportunities = find_opportunities(
             session,
@@ -102,6 +103,7 @@ else:
             security_penalty=security_penalty,
             risk_profile=risk_profile,
             execution_profile=execution_profile,
+            diagnostics=diagnostics,
         )
 
     for opportunity in opportunities:
@@ -112,7 +114,28 @@ else:
     opportunities.sort(key=lambda item: item[sort_by], reverse=True)
 
     if not opportunities:
-        st.info("Nenhuma oportunidade encontrada. Execute a coleta de mercado e carregue o SDE para habilitar os filtros de segurança.")
+        st.info("Nenhuma oportunidade encontrada.")
+        with st.expander("🔎 Diagnóstico do scanner", expanded=True):
+            st.write("As etapas abaixo mostram onde as oportunidades estão sendo eliminadas.")
+            labels = {
+                "market_types": "Tipos de mercado analisados",
+                "with_source_orders": "Com ordem de venda na origem",
+                "with_destination_orders": "Com ordem de compra no destino",
+                "with_both_sides": "Com os dois lados",
+                "with_valid_volume": "Com volume/SDE válidos",
+                "routes_checked": "Rotas verificadas",
+                "routes_allowed": "Rotas aprovadas pelos filtros",
+                "quantity_executable": "Com quantidade executável",
+                "gross_profit_positive": "Com lucro bruto positivo",
+                "roi_pass": "Acima do ROI mínimo",
+                "profit_pass": "Acima do lucro mínimo",
+                "final_opportunities": "Oportunidades finais",
+            }
+            st.dataframe(
+                [{"Etapa": label, "Quantidade": diagnostics.get(key, 0)} for key, label in labels.items()],
+                use_container_width=True,
+                hide_index=True,
+            )
     else:
         st.metric("Oportunidades", len(opportunities))
         st.dataframe(
