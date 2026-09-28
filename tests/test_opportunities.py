@@ -95,3 +95,103 @@ def test_net_profit_applies_sales_tax_and_transport():
     assert opportunity["transport_cost"] == 50
     assert opportunity["net_profit"] == 300
     assert opportunity["roi"] == 0.3
+
+
+def test_opportunity_exposes_liquidity_and_spread_metrics():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add(Item(type_id=36, name="Liquidity Test", volume=1.0))
+    session.add_all(
+        [
+            MarketOrder(
+                order_id=21, region_id=10000002, system_id=1, location_id=10,
+                type_id=36, price=100, volume_remain=100, volume_total=100,
+                is_buy_order=False, collected_at=None,
+            ),
+            MarketOrder(
+                order_id=22, region_id=10000002, system_id=1, location_id=10,
+                type_id=36, price=110, volume_remain=100, volume_total=100,
+                is_buy_order=False, collected_at=None,
+            ),
+            MarketOrder(
+                order_id=23, region_id=10000043, system_id=2, location_id=20,
+                type_id=36, price=150, volume_remain=150, volume_total=150,
+                is_buy_order=True, collected_at=None,
+            ),
+        ]
+    )
+    session.commit()
+
+    result = find_opportunities(
+        session,
+        10000002,
+        10000043,
+        capital_isk=10_000,
+        cargo_m3=150,
+        min_roi=0.0,
+        min_profit_isk=0,
+    )
+
+    opportunity = result[0]
+    assert opportunity["source_book_volume"] == 200
+    assert opportunity["destination_book_volume"] == 150
+    assert opportunity["book_capacity"] == 150
+    assert opportunity["quantity"] == 100
+    assert opportunity["book_coverage"] == 100 / 150
+    assert opportunity["spread_isk"] == 50
+    assert opportunity["spread_pct"] == 0.5
+
+
+def test_sort_by_applies_before_limit():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add_all(
+        [
+            Item(type_id=37, name="High ROI", volume=1.0),
+            Item(type_id=38, name="High Profit", volume=1.0),
+        ]
+    )
+    session.add_all(
+        [
+            MarketOrder(
+                order_id=31, region_id=10000002, system_id=1, location_id=10,
+                type_id=37, price=100, volume_remain=10, volume_total=10,
+                is_buy_order=False, collected_at=None,
+            ),
+            MarketOrder(
+                order_id=32, region_id=10000043, system_id=2, location_id=20,
+                type_id=37, price=200, volume_remain=10, volume_total=10,
+                is_buy_order=True, collected_at=None,
+            ),
+            MarketOrder(
+                order_id=33, region_id=10000002, system_id=1, location_id=10,
+                type_id=38, price=10, volume_remain=1000, volume_total=1000,
+                is_buy_order=False, collected_at=None,
+            ),
+            MarketOrder(
+                order_id=34, region_id=10000043, system_id=2, location_id=20,
+                type_id=38, price=11, volume_remain=1000, volume_total=1000,
+                is_buy_order=True, collected_at=None,
+            ),
+        ]
+    )
+    session.commit()
+
+    result = find_opportunities(
+        session,
+        10000002,
+        10000043,
+        capital_isk=10_000,
+        cargo_m3=10,
+        min_roi=0.0,
+        min_profit_isk=0,
+        limit=1,
+        sort_by="roi",
+    )
+
+    assert len(result) == 1
+    assert result[0]["name"] == "High ROI"
