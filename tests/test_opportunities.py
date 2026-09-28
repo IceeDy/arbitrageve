@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
