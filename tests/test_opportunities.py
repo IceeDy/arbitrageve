@@ -338,10 +338,10 @@ def test_execution_class_distinguishes_speculative_and_scalable_trades():
                     type_id=42, price=200, volume_remain=2, volume_total=2,
                     is_buy_order=True, collected_at=FRESH_COLLECTED_AT),
         MarketOrder(order_id=73, region_id=10000002, system_id=1, location_id=10,
-                    type_id=43, price=100, volume_remain=200, volume_total=200,
+                    type_id=43, price=100, volume_remain=250, volume_total=250,
                     is_buy_order=False, collected_at=FRESH_COLLECTED_AT),
         MarketOrder(order_id=74, region_id=10000043, system_id=2, location_id=20,
-                    type_id=43, price=150, volume_remain=200, volume_total=200,
+                    type_id=43, price=150, volume_remain=250, volume_total=250,
                     is_buy_order=True, collected_at=FRESH_COLLECTED_AT),
     ])
     session.commit()
