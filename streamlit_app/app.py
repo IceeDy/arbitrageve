@@ -22,14 +22,18 @@ _opportunities_module = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = _opportunities_module
 _spec.loader.exec_module(_opportunities_module)
 find_opportunities = _opportunities_module.find_opportunities
-ROUTES_PATH = SRC_DIR / "arbitrageve" / "esi" / "routes.py"
-_routes_spec = importlib.util.spec_from_file_location("arbitrageve_runtime_routes", ROUTES_PATH)
-if _routes_spec is None or _routes_spec.loader is None:
-    raise RuntimeError(f"Unable to load runtime routes module from {ROUTES_PATH}")
-_routes_module = importlib.util.module_from_spec(_routes_spec)
-sys.modules[_routes_spec.name] = _routes_module
-_routes_spec.loader.exec_module(_routes_module)
-RouteClient = _routes_module.RouteClient
+LOCAL_ROUTES_PATH = SRC_DIR / "arbitrageve" / "sde" / "routes.py"
+_local_routes_spec = importlib.util.spec_from_file_location(
+    "arbitrageve_runtime_local_routes", LOCAL_ROUTES_PATH
+)
+if _local_routes_spec is None or _local_routes_spec.loader is None:
+    raise RuntimeError(
+        f"Unable to load local route module from {LOCAL_ROUTES_PATH}"
+    )
+_local_routes_module = importlib.util.module_from_spec(_local_routes_spec)
+sys.modules[_local_routes_spec.name] = _local_routes_module
+_local_routes_spec.loader.exec_module(_local_routes_module)
+LocalRouteClient = _local_routes_module.LocalRouteClient
 
 from arbitrageve.services.risk import RiskProfile
 
@@ -123,7 +127,7 @@ else:
             min_roi,
             min_profit,
             costs=costs,
-            route_client=RouteClient(),
+            route_client=LocalRouteClient(session),
             route_preference=route_preference,
             security_penalty=security_penalty,
             risk_profile=risk_profile,
