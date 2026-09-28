@@ -12,7 +12,6 @@ import streamlit as st
 from arbitrageve.config.regions import DOMAIN, REGIONS, THE_FORGE
 from arbitrageve.config.settings import settings
 from arbitrageve.db.database import SessionLocal, init_db
-from arbitrageve.esi.routes import RouteClient
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
 OPPORTUNITIES_PATH = SRC_DIR / "arbitrageve" / "services" / "opportunities.py"
@@ -23,6 +22,15 @@ _opportunities_module = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = _opportunities_module
 _spec.loader.exec_module(_opportunities_module)
 find_opportunities = _opportunities_module.find_opportunities
+ROUTES_PATH = SRC_DIR / "arbitrageve" / "esi" / "routes.py"
+_routes_spec = importlib.util.spec_from_file_location("arbitrageve_runtime_routes", ROUTES_PATH)
+if _routes_spec is None or _routes_spec.loader is None:
+    raise RuntimeError(f"Unable to load runtime routes module from {ROUTES_PATH}")
+_routes_module = importlib.util.module_from_spec(_routes_spec)
+sys.modules[_routes_spec.name] = _routes_module
+_routes_spec.loader.exec_module(_routes_module)
+RouteClient = _routes_module.RouteClient
+
 from arbitrageve.services.risk import RiskProfile
 
 st.set_page_config(page_title="ArbitrageVE", page_icon="📈", layout="wide")
