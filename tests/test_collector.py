@@ -88,3 +88,23 @@ def test_collect_region_reuses_first_page_and_replaces_snapshot():
         select(MarketOrder).where(MarketOrder.region_id == 10000002)
     ).all()
     assert {order.order_id for order in orders} == {101, 102}
+
+
+class DuplicatePageClient(FakeClient):
+    def get_orders(self, region_id, order_type="all", page=1):
+        rows, pages = super().get_orders(region_id, order_type, page)
+        if page == 2:
+            rows = rows + [rows[0]]
+        return rows, pages
+
+
+def test_collect_region_deduplicates_overlapping_pages():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    count = collect_region(session, 10000002, DuplicatePageClient())
+
+    assert count == 2
+    orders = session.scalars(select(MarketOrder)).all()
+    assert len(orders) == 2
