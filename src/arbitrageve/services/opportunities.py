@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
+from arbitrageve.market.metrics import ExecutionProfile, estimate_isk_per_hour
 from arbitrageve.services.risk import RiskProfile, analyze_route, route_allowed
 
 
@@ -81,12 +82,15 @@ def find_opportunities(
     route_preference: str = "Shorter",
     security_penalty: int = 50,
     risk_profile: RiskProfile | None = None,
+    execution_profile: ExecutionProfile | None = None,
 ) -> list[dict]:
     """Find executable cross-region opportunities using order-book depth."""
     costs = costs or TradeCosts()
     costs.validate()
     risk_profile = risk_profile or RiskProfile()
     risk_profile.validate()
+    execution_profile = execution_profile or ExecutionProfile()
+    execution_profile.validate()
 
     item_ids = session.execute(
         select(MarketOrder.type_id)
@@ -188,6 +192,10 @@ def find_opportunities(
         gross_profit = revenue - spent
         net_profit = gross_profit - trade_costs["total_costs"]
         roi = net_profit / spent if spent else 0.0
+        estimated_minutes = execution_profile.fixed_minutes + jumps * execution_profile.minutes_per_jump
+        if execution_profile.return_trip:
+            estimated_minutes *= 2
+        isk_per_hour = estimate_isk_per_hour(net_profit, jumps, execution_profile)
 
         if roi < min_roi or net_profit < min_profit_isk:
             continue
@@ -209,6 +217,8 @@ def find_opportunities(
                 "total_costs": trade_costs["total_costs"],
                 "net_profit": net_profit,
                 "roi": roi,
+                "estimated_minutes": estimated_minutes,
+                "isk_per_hour": isk_per_hour,
                 "volume_m3": quantity * volume,
                 "jumps": jumps,
                 "route_system_ids": route,
