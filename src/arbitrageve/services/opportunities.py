@@ -1,3 +1,4 @@
+import math
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, select
@@ -97,7 +98,7 @@ def _max_affordable_quantity(
     plus all modeled trade costs. This prevents transport and safety-margin
     assumptions from being ignored when sizing a trade.
     """
-    max_quantity = min(max_quantity, int(cargo_m3 // volume_m3))
+    max_quantity = min(max_quantity, math.floor(cargo_m3 / volume_m3 + 1e-9))
     if max_quantity <= 0:
         return 0
 
