@@ -1,12 +1,3 @@
-from arbitrageve.db.models import SolarSystem
-
-
-def def test_security_class():
-    assert SolarSystem(system_id=1, name="High", security_status=0.9).security_class == "highsec"
-    assert SolarSystem(system_id=2, name="Low", security_status=0.3).security_class == "lowsec"
-    assert SolarSystem(system_id=3, name="Null", security_status=0.0).security_class == "nullsec"
-
-
 import json
 import zipfile
 
@@ -91,3 +82,12 @@ def test_load_stargates_current_object_shape(tmp_path):
     gate = session.get(Stargate, 50000001)
     assert gate.system_id == 30000001
     assert gate.destination_system_id == 30000002
+
+
+from arbitrageve.db.models import SolarSystem
+
+
+def test_security_class():
+    assert SolarSystem(system_id=1, name="High", security_status=0.9).security_class == "highsec"
+    assert SolarSystem(system_id=2, name="Low", security_status=0.3).security_class == "lowsec"
+    assert SolarSystem(system_id=3, name="Null", security_status=0.0).security_class == "nullsec"
