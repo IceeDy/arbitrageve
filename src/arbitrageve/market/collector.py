@@ -6,18 +6,26 @@ from arbitrageve.db.models import MarketOrder
 from arbitrageve.esi.market import MarketClient
 
 
+def _deduplicate_orders(orders: list[dict]) -> list[dict]:
+    """Keep one record per ESI order ID.
+
+    Market pages can overlap while the live order book changes during a
+    paginated snapshot. The primary key is the ESI order_id, so duplicate
+    rows must be collapsed before insertion.
+    """
+    unique: dict[int, dict] = {}
+    for order in orders:
+        unique[order["order_id"]] = order
+    return list(unique.values())
+
+
 def collect_region(
     session,
     region_id: int,
     client: MarketClient | None = None,
     progress_callback=None,
 ) -> int:
-    """Replace a region with one complete ESI market snapshot.
-
-    Page 1 is used to discover the current page count and is then reused,
-    avoiding a duplicate request. Existing rows are deleted only after every
-    page has been fetched successfully.
-    """
+    """Replace a region with one complete ESI market snapshot."""
     client = client or MarketClient()
     stamp = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -33,6 +41,7 @@ def collect_region(
         if progress_callback:
             progress_callback(page, pages, len(collected))
 
+    collected = _deduplicate_orders(collected)
     session.execute(delete(MarketOrder).where(MarketOrder.region_id == region_id))
 
     for data in collected:
