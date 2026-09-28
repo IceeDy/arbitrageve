@@ -54,4 +54,8 @@ SessionLocal = sessionmaker(bind=engine)
 
 
 def init_db() -> None:
+    # Import models here so all mapped tables are registered before create_all.
+    from arbitrageve import db as _db_package  # noqa: F401
+    from arbitrageve.db import models as _models  # noqa: F401
+
     Base.metadata.create_all(engine)
