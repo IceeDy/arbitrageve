@@ -84,6 +84,7 @@ def find_opportunities(
     risk_profile: RiskProfile | None = None,
     execution_profile: ExecutionProfile | None = None,
     diagnostics: dict[str, int] | None = None,
+    sort_by: str = "net_profit",
 ) -> list[dict]:
     """Find executable cross-region opportunities using order-book depth."""
     costs = costs or TradeCosts()
@@ -92,6 +93,9 @@ def find_opportunities(
     risk_profile.validate()
     execution_profile = execution_profile or ExecutionProfile()
     execution_profile.validate()
+    allowed_sort_keys = {"net_profit", "roi", "isk_per_hour", "capital_efficiency"}
+    if sort_by not in allowed_sort_keys:
+        raise ValueError(f"unsupported sort_by: {sort_by}")
 
     item_ids = session.execute(
         select(MarketOrder.type_id)
@@ -235,6 +239,7 @@ def find_opportunities(
 
         source_available = sum(o.volume_remain for o in source_orders)
         destination_available = sum(o.volume_remain for o in destination_orders)
+        book_capacity = min(source_available, destination_available)
         max_quantity = min(source_available, destination_available, int(cargo_m3 // volume))
         quantity = _max_affordable_quantity(
             source_orders,
@@ -273,6 +278,11 @@ def find_opportunities(
         if diagnostics is not None:
             diagnostics["profit_pass"] += 1
 
+        capital_efficiency = net_profit / spent if spent else 0.0
+        spread_isk = (revenue / quantity) - (spent / quantity)
+        spread_pct = spread_isk / (spent / quantity) if spent else 0.0
+        book_coverage = quantity / book_capacity if book_capacity else 0.0
+
         results.append(
             {
                 "type_id": type_id,
@@ -290,6 +300,13 @@ def find_opportunities(
                 "total_costs": trade_costs["total_costs"],
                 "net_profit": net_profit,
                 "roi": roi,
+                "capital_efficiency": capital_efficiency,
+                "spread_isk": spread_isk,
+                "spread_pct": spread_pct,
+                "source_book_volume": source_available,
+                "destination_book_volume": destination_available,
+                "book_capacity": book_capacity,
+                "book_coverage": book_coverage,
                 "estimated_minutes": estimated_minutes,
                 "isk_per_hour": isk_per_hour,
                 "volume_m3": quantity * volume,
@@ -310,7 +327,12 @@ def find_opportunities(
             }
         )
 
-    results = sorted(results, key=lambda opportunity: opportunity["net_profit"], reverse=True)[:limit]
+    results = sorted(
+        results,
+        key=lambda opportunity: opportunity["capital_efficiency"] if sort_by == "capital_efficiency"
+        else opportunity[sort_by],
+        reverse=True,
+    )[:limit]
     if diagnostics is not None:
         diagnostics["final_opportunities"] = len(results)
     return results
