@@ -11,6 +11,7 @@ import streamlit as st
 
 from arbitrageve.config.regions import DOMAIN, REGIONS, THE_FORGE
 from arbitrageve.config.settings import settings
+from arbitrageve.db.models import Stargate
 from arbitrageve.db.database import SessionLocal, init_db
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
@@ -41,7 +42,7 @@ st.set_page_config(page_title="ArbitrageVE", page_icon="📈", layout="wide")
 init_db()
 
 st.title("ArbitrageVE")
-st.caption("EVE Online cross-region market arbitrage scanner")
+st.caption("EVE Online cross-region market arbitrage scanner • roteamento local via SDE")
 # Scanner diagnostics API: 2026-09-28
 
 with st.sidebar:
@@ -118,6 +119,14 @@ else:
 
     diagnostics = {}
     with SessionLocal() as session:
+        stargate_count = session.query(Stargate).count()
+        if stargate_count == 0:
+            st.error(
+                "O grafo local de rotas está vazio. Vá em Dados → Atualizar SDE "
+                "para importar os stargates antes de executar o scanner."
+            )
+            st.stop()
+
         opportunities = find_opportunities(
             session,
             source,
@@ -155,9 +164,6 @@ else:
                 "profit_pass": "Acima do lucro mínimo",
                 "final_opportunities": "Oportunidades finais",
                 "rejected_before_route": "Descartadas antes da consulta de rota",
-                "route_rate_limited": "ESI bloqueou por rate limit (429)",
-                "routes_skipped_rate_limit": "Pares ignorados após rate limit",
-                "routes_skipped_budget": "Pares ignorados por limite de consultas",
             }
             st.dataframe(
                 [{"Etapa": label, "Quantidade": diagnostics.get(key, 0)} for key, label in labels.items()]
