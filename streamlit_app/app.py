@@ -1,3 +1,4 @@
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -14,7 +15,14 @@ from arbitrageve.db.database import SessionLocal, init_db
 from arbitrageve.esi.routes import RouteClient
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
-from arbitrageve.services.opportunities import find_opportunities
+OPPORTUNITIES_PATH = SRC_DIR / "arbitrageve" / "services" / "opportunities.py"
+_spec = importlib.util.spec_from_file_location("arbitrageve_runtime_opportunities", OPPORTUNITIES_PATH)
+if _spec is None or _spec.loader is None:
+    raise RuntimeError(f"Could not load scanner module from {OPPORTUNITIES_PATH}")
+_opportunities_module = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = _opportunities_module
+_spec.loader.exec_module(_opportunities_module)
+find_opportunities = _opportunities_module.find_opportunities
 from arbitrageve.services.risk import RiskProfile
 
 st.set_page_config(page_title="ArbitrageVE", page_icon="📈", layout="wide")
