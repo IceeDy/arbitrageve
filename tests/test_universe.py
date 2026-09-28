@@ -10,8 +10,13 @@ import json
 import zipfile
 
 from arbitrageve.db.database import Base
-from arbitrageve.db.models import Item
-from arbitrageve.sde.loader import inspect_types_archive, load_types
+from arbitrageve.db.models import Item, SolarSystem, Stargate
+from arbitrageve.sde.loader import (
+    inspect_types_archive,
+    load_stargates_from_archive,
+    load_types,
+    load_solar_systems_from_archive,
+)
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
@@ -56,3 +61,33 @@ def test_inspect_types_archive(tmp_path):
     assert result["sample_lines"] == 1
     assert result["sample_keyed"] == 1
     assert result["sample_named"] == 1
+
+
+def test_load_stargates_current_object_shape(tmp_path):
+    archive_path = tmp_path / "sde.zip"
+    stargates_path = tmp_path / "mapStargates.jsonl"
+    stargates_path.write_text(
+        json.dumps(
+            {
+                "_key": 50000001,
+                "solarSystemID": 30000001,
+                "destination": {
+                    "solarSystemID": 30000002,
+                    "stargateID": 50000002,
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.write(stargates_path, "mapStargates.jsonl")
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    assert load_stargates_from_archive(archive_path, session) == 1
+    gate = session.get(Stargate, 50000001)
+    assert gate.system_id == 30000001
+    assert gate.destination_system_id == 30000002
