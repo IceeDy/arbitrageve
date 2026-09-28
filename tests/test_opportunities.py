@@ -276,3 +276,45 @@ def test_liquidity_class_uses_absolute_depth_and_book_coverage():
     assert result[0]["book_capacity"] == 2000
     assert result[0]["book_coverage"] == 0.05
     assert result[0]["liquidity_class"] == "Média"
+
+
+def test_stale_market_snapshot_is_rejected():
+    from datetime import datetime, timedelta
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    collected_at = datetime.now() - timedelta(hours=2)
+    session.add(Item(type_id=41, name="Stale Market Test", volume=1.0))
+    session.add_all(
+        [
+            MarketOrder(
+                order_id=61, region_id=10000002, system_id=1, location_id=10,
+                type_id=41, price=100, volume_remain=10, volume_total=10,
+                is_buy_order=False, collected_at=collected_at,
+            ),
+            MarketOrder(
+                order_id=62, region_id=10000043, system_id=2, location_id=20,
+                type_id=41, price=150, volume_remain=10, volume_total=10,
+                is_buy_order=True, collected_at=collected_at,
+            ),
+        ]
+    )
+    session.commit()
+
+    diagnostics = {}
+    result = find_opportunities(
+        session,
+        10000002,
+        10000043,
+        capital_isk=10_000,
+        cargo_m3=10,
+        min_roi=0.0,
+        min_profit_isk=0,
+        max_market_age_minutes=60,
+        diagnostics=diagnostics,
+    )
+
+    assert result == []
+    assert diagnostics["rejected_stale_market"] == 1
