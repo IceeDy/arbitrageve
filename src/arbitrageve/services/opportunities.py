@@ -116,6 +116,10 @@ def find_opportunities(
                 "rejected_lowsec": 0,
                 "rejected_unknown_route": 0,
                 "rejected_other_risk": 0,
+                "route_empty": 0,
+                "route_systems_missing": 0,
+                "route_systems_found": 0,
+                "route_shape_invalid": 0,
                 "quantity_executable": 0,
                 "gross_profit_positive": 0,
                 "roi_pass": 0,
@@ -192,12 +196,24 @@ def find_opportunities(
         route, jumps = route_cache[cache_key]
         if diagnostics is not None:
             diagnostics["routes_checked"] += 1
+        if not isinstance(route, list) or not all(isinstance(system_id, int) for system_id in route):
+            if diagnostics is not None:
+                diagnostics["route_shape_invalid"] += 1
+            continue
+        if not route:
+            if diagnostics is not None:
+                diagnostics["route_empty"] += 1
+            continue
         systems = []
         for system_id in route:
             if system_id not in system_cache:
                 system_cache[system_id] = session.get(SolarSystem, system_id)
             if system_cache[system_id] is not None:
                 systems.append(system_cache[system_id])
+
+        if diagnostics is not None:
+            diagnostics["route_systems_found"] += len(systems)
+            diagnostics["route_systems_missing"] += len(route) - len(systems)
 
         risk = analyze_route(systems, jumps)
         risk["jumps"] = jumps
