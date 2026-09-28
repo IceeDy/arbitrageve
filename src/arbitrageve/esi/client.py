@@ -49,6 +49,18 @@ class ESIClient:
                     f"ESI returned HTTP {response.status_code}: "
                     f"{response.text[:1000]}"
                 )
+                last_error.status_code = response.status_code
+                last_error.retry_after = response.headers.get("Retry-After")
+                last_error.rate_limit_headers = {
+                    key: response.headers.get(key)
+                    for key in (
+                        "X-Ratelimit-Group",
+                        "X-Ratelimit-Limit",
+                        "X-Ratelimit-Remaining",
+                        "X-Ratelimit-Used",
+                    )
+                    if response.headers.get(key) is not None
+                }
                 if attempt >= 2:
                     raise last_error
                 retry_after = response.headers.get("Retry-After")
