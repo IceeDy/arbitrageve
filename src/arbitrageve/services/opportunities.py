@@ -38,93 +38,6 @@ def _sell_orders(orders, quantity: int):
 def _max_affordable_quantity(
     source_orders,
     destination_orders,
-    max_quantity: int,
-    capital_isk: float,
-    volume_m3: float,
-    cargo_m3: float,
-    jumps: int,
-    costs: TradeCosts,
-) -> int:
-    """Find the largest executable quantity without decrementing one unit at a time."""
-    max_quantity = min(max_quantity, int(cargo_m3 // volume_m3))
-    if max_quantity <= 0:
-        return 0
-
-    def affordable(quantity: int) -> bool:
-        acquired, spent = _consume_orders(source_orders, quantity)
-        sold, revenue = _sell_orders(destination_orders, quantity)
-        if acquired != quantity or sold != quantity:
-            return False
-        trade_costs = calculate_trade_costs(revenue, quantity * volume_m3, jumps, costs)
-        return spent + trade_costs["broker_fee"] <= capital_isk
-
-    low, high = 0, max_quantity
-    while low < high:
-        mid = (low + high + 1) // 2
-        if affordable(mid):
-            low = mid
-        else:
-            high = mid - 1
-    return low
-
-
-def _group_orders_by_lane(orders):
-    lanes = {}
-    for order in orders:
-        lane = (order.system_id, order.location_id)
-        lanes.setdefault(lane, []).append(order)
-    return lanes
-
-
-def _lane_summary(orders):
-    return {
-        "orders": sorted(orders, key=lambda o: o.price),
-        "volume": sum(o.volume_remain for o in orders),
-    }
-
-
-def _select_candidate_lanes(lanes, *, is_source, max_lanes=8):
-    """Keep a bounded set of liquid, price-competitive station lanes."""
-    summaries = []
-    for lane, orders in lanes.items():
-        ordered = sorted(orders, key=lambda o: o.price, reverse=not is_source)
-        volume = sum(o.volume_remain for o in orders)
-        if volume <= 0:
-            continue
-        summaries.append((lane, ordered, volume))
-
-    # Price is primary; volume breaks ties so a one-unit anomaly does not
-    # dominate the candidate set.
-    summaries.sort(
-        key=lambda x: (x[1][0].price, -x[2])
-        if is_source
-        else (-x[1][0].price, -x[2])
-    )
-    return summaries[:max_lanes]
-
-
-def _route_for_lane(route_client, route_cache, origin, destination, preference, security_penalty):
-    cache_key = (origin, destination, preference, security_penalty)
-    if cache_key in route_cache:
-        return route_cache[cache_key]
-
-    if not route_client or origin == destination:
-        route_cache[cache_key] = ([origin], 0)
-        return route_cache[cache_key]
-
-    route = route_client.route(
-        origin,
-        destination,
-        preference=preference,
-        security_penalty=security_penalty,
-    )
-    route_cache[cache_key] = (route, max(0, len(route) - 1))
-    return route_cache[cache_key]
-
-
-def _max_affordable_quantity(
-    source_orders,
-    destination_orders,
     max_quantity,
     capital_isk,
     volume_m3,
@@ -132,7 +45,12 @@ def _max_affordable_quantity(
     jumps,
     costs,
 ) -> int:
-    """Find the largest executable quantity without decrementing one unit at a time."""
+    """Find the largest executable quantity within the configured cash requirement.
+
+    The scanner is intentionally conservative: capital must cover the purchase
+    plus all modeled trade costs. This prevents transport and safety-margin
+    assumptions from being ignored when sizing a trade.
+    """
     max_quantity = min(max_quantity, int(cargo_m3 // volume_m3))
     if max_quantity <= 0:
         return 0
@@ -142,8 +60,11 @@ def _max_affordable_quantity(
         sold, revenue = _sell_orders(destination_orders, quantity)
         if acquired != quantity or sold != quantity:
             return False
-        trade_costs = calculate_trade_costs(revenue, quantity * volume_m3, jumps, costs)
-        return spent + trade_costs["broker_fee"] <= capital_isk
+        trade_costs = calculate_trade_costs(
+            revenue, quantity * volume_m3, jumps, costs
+        )
+        required_capital = spent + trade_costs["total_costs"]
+        return required_capital <= capital_isk
 
     low, high = 0, max_quantity
     while low < high:
@@ -153,6 +74,17 @@ def _max_affordable_quantity(
         else:
             high = mid - 1
     return low
+
+
+def _liquidity_class(quantity: int, book_capacity: int, coverage: float) -> str:
+    """Classify executable depth using absolute quantity and book consumption."""
+    if quantity <= 1:
+        return "Muito baixa"
+    if quantity >= 1000 and book_capacity >= 1000 and coverage <= 0.50:
+        return "Alta"
+    if quantity >= 100 and book_capacity >= 100 and coverage <= 0.80:
+        return "Média"
+    return "Baixa"
 
 
 def find_opportunities(
@@ -210,6 +142,7 @@ def find_opportunities(
             "profit_pass": 0, "final_opportunities": 0,
             "candidate_pairs": 0,
             "rejected_before_route": 0,
+            "rejected_capital": 0,
         })
 
     route_cache = {}
@@ -326,6 +259,8 @@ def find_opportunities(
                     capital_isk, volume, cargo_m3, jumps, costs,
                 )
                 if quantity <= 0:
+                    if diagnostics is not None:
+                        diagnostics["rejected_capital"] += 1
                     continue
                 if diagnostics is not None:
                     diagnostics["quantity_executable"] += 1
@@ -352,6 +287,9 @@ def find_opportunities(
                 spread_pct = spread_isk / avg_buy if avg_buy else 0.0
                 book_capacity = min(source_book_volume, destination_book_volume)
                 book_coverage = quantity / book_capacity if book_capacity else 0.0
+                liquidity_class = _liquidity_class(
+                    quantity, book_capacity, book_coverage
+                )
 
                 if gross_profit > 0 and diagnostics is not None:
                     diagnostics["gross_profit_positive"] += 1
@@ -381,6 +319,7 @@ def find_opportunities(
                     "destination_book_volume": destination_book_volume,
                     "book_capacity": book_capacity,
                     "book_coverage": book_coverage,
+                    "liquidity_class": liquidity_class,
                     "estimated_minutes": estimated_minutes, "isk_per_hour": isk_per_hour,
                     "volume_m3": quantity * volume, "jumps": jumps,
                     "route_system_ids": route, "route_class": risk["route_class"],
