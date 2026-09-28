@@ -1,5 +1,5 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from runtime import load_repo_module
@@ -12,8 +12,8 @@ import streamlit as st
 
 from arbitrageve.config.regions import REGIONS, THE_FORGE
 from arbitrageve.config.settings import settings
-from arbitrageve.db.models import Stargate
 from arbitrageve.db.database import SessionLocal, init_db
+from arbitrageve.db.models import Stargate
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
 from arbitrageve.sde.routes import LocalRouteClient
