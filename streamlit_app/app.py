@@ -14,6 +14,7 @@ init_db()
 
 st.title("ArbitrageVE")
 st.caption("EVE Online cross-region market arbitrage scanner")
+# Scanner diagnostics API: 2026-09-28
 
 with st.sidebar:
     st.header("Scanner")
