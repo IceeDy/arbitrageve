@@ -296,12 +296,23 @@ def find_opportunities(
                             diagnostics["routes_skipped_budget"] += 1
                         continue
 
+                route_key = (
+                    origin_system,
+                    destination_system,
+                    route_preference,
+                    security_penalty,
+                )
+                needs_route_request = (
+                    route_client
+                    and origin_system != destination_system
+                    and route_key not in route_cache
+                )
                 try:
                     route, jumps = _route_for_lane(
                         route_client, route_cache, origin_system, destination_system,
                         route_preference, security_penalty
                     )
-                    if route_client and origin_system != destination_system:
+                    if needs_route_request:
                         route_requests += 1
                 except RuntimeError as exc:
                     if str(exc) == "ESI route endpoint rate limited":
