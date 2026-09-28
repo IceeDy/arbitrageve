@@ -75,8 +75,10 @@ def load_types_from_archive(archive_path: Path, session: Session) -> int:
                 if volume is None:
                     volume = value.get("packagedVolume")
 
-                if not name or volume is None:
+                if not name:
                     continue
+                if volume is None:
+                    volume = 0.0
 
                 session.merge(
                     Item(
