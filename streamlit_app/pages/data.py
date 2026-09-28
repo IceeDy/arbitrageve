@@ -1,3 +1,13 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from runtime import load_repo_module
+
+load_repo_module("arbitrageve.db.database", "arbitrageve/db/database.py")
+load_repo_module("arbitrageve.db.models", "arbitrageve/db/models.py")
+load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
+
 import streamlit as st
 
 from arbitrageve.config.regions import DOMAIN, REGIONS, THE_FORGE
