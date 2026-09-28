@@ -182,7 +182,7 @@ else:
                     "ISK/h": f'{item["isk_per_hour"]:,.0f}',
                     "Ef. capital": f'{item["capital_efficiency"]:.2%}',
                     "Spread": f'{item["spread_pct"]:.2%}',
-                    "Liquidez": item["liquidity_class"],
+                    "Liquidez": item.get("liquidity_class", "Baixa"),
                     "Cobertura book": f'{item["book_coverage"]:.2%}',
                     "Book mínimo": item["book_capacity"],
                     "Book origem": item["source_book_volume"],
