@@ -50,7 +50,7 @@ pytest
 
 The scanner currently models an immediate cross-region trade: it buys from existing sell orders and sells into existing buy orders. Sales tax is therefore the primary market fee. Broker fee is configurable for future strategies that create non-immediate sell orders.
 
-CCP's current support documentation states that sales tax starts at 7.5% and can be reduced through Accounting, while broker fee starts at 3% for non-immediate orders and depends on Broker Relations and standings. These rates are configurable in the dashboard rather than hard-coded into the profitability engine. citeturn0search0turn0search1
+CCP's current support documentation states that sales tax starts at 7.5% and can be reduced through Accounting, while broker fee starts at 3% for non-immediate orders and depends on Broker Relations and standings. These rates are configurable in the dashboard rather than hard-coded into the profitability engine.
 
 Transport can be represented as a flat trip cost plus an ISK/m³/jump component. A safety margin can be applied to the modeled costs to avoid treating small theoretical spreads as guaranteed profit.
 
