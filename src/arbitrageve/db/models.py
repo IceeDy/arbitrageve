@@ -14,6 +14,22 @@ class Item(Base):
     volume: Mapped[float] = mapped_column(Float, default=0)
 
 
+class SolarSystem(Base):
+    __tablename__ = "solar_systems"
+
+    system_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    security_status: Mapped[float] = mapped_column(Float, default=0)
+
+    @property
+    def security_class(self) -> str:
+        if self.security_status >= 0.45:
+            return "highsec"
+        if self.security_status > 0:
+            return "lowsec"
+        return "nullsec"
+
+
 class MarketOrder(Base):
     __tablename__ = "market_orders"
 
