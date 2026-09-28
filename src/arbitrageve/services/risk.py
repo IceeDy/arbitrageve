@@ -34,6 +34,7 @@ def analyze_route(systems: Iterable[SolarSystem], jumps: int) -> dict[str, float
             "nullsec_systems": 0,
             "min_security_status": 0.0,
             "risk_score": 0.0,
+            "route_known": False,
         }
 
     highsec = sum(system.security_class == "highsec" for system in systems)
@@ -58,12 +59,17 @@ def analyze_route(systems: Iterable[SolarSystem], jumps: int) -> dict[str, float
         "nullsec_systems": nullsec,
         "min_security_status": min_security,
         "risk_score": risk_score,
+        "route_known": True,
     }
 
 
 def route_allowed(profile: RiskProfile, analysis: dict) -> bool:
     """Return whether a route passes the configured filters."""
     profile.validate()
+    if not analysis.get("route_known", False) and not (
+        profile.allow_highsec and profile.allow_lowsec and profile.allow_nullsec
+    ):
+        return False
     if profile.max_jumps is not None and int(analysis.get("jumps", 0)) > profile.max_jumps:
         return False
     if analysis.get("lowsec_systems", 0) and not profile.allow_lowsec:
