@@ -150,6 +150,10 @@ else:
                 "roi_pass": "Acima do ROI mínimo",
                 "profit_pass": "Acima do lucro mínimo",
                 "final_opportunities": "Oportunidades finais",
+                "rejected_before_route": "Descartadas antes da consulta de rota",
+                "route_rate_limited": "ESI bloqueou por rate limit (429)",
+                "routes_skipped_rate_limit": "Pares ignorados após rate limit",
+                "routes_skipped_budget": "Pares ignorados por limite de consultas",
             }
             st.dataframe(
                 [{"Etapa": label, "Quantidade": diagnostics.get(key, 0)} for key, label in labels.items()]
