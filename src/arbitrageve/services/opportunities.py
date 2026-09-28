@@ -77,6 +77,8 @@ def find_opportunities(
     limit: int = 100,
     costs: TradeCosts | None = None,
     route_client=None,
+    route_preference: str = "Shorter",
+    security_penalty: int = 50,
 ) -> list[dict]:
     """Find executable cross-region opportunities using order-book depth.
 
@@ -145,7 +147,7 @@ def find_opportunities(
         cache_key = (origin_system, destination_system)
         if cache_key not in route_cache:
             if route_client and origin_system != destination_system:
-                route_cache[cache_key] = len(route_client.route(origin_system, destination_system)) - 1
+                route_cache[cache_key] = len(route_client.route(origin_system, destination_system, preference=route_preference, security_penalty=security_penalty)) - 1
             else:
                 route_cache[cache_key] = 0
         jumps = route_cache[cache_key]
