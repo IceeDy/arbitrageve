@@ -132,7 +132,7 @@ def test_opportunity_exposes_liquidity_and_spread_metrics():
         session,
         10000002,
         10000043,
-        capital_isk=12_000,
+        capital_isk=11_200,
         cargo_m3=150,
         min_roi=0.0,
         min_profit_isk=0,
