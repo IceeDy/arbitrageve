@@ -30,6 +30,14 @@ class SolarSystem(Base):
         return "nullsec"
 
 
+class Stargate(Base):
+    __tablename__ = "stargates"
+
+    stargate_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    system_id: Mapped[int] = mapped_column(Integer, index=True)
+    destination_system_id: Mapped[int] = mapped_column(Integer, index=True)
+
+
 class MarketOrder(Base):
     __tablename__ = "market_orders"
 
