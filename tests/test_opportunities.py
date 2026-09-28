@@ -10,6 +10,7 @@ from arbitrageve.services.opportunities import find_opportunities
 
 FRESH_COLLECTED_AT = datetime.now(UTC).replace(tzinfo=None)
 
+
 def test_order_book_depth_changes_effective_prices():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -54,7 +55,6 @@ def test_order_book_depth_changes_effective_prices():
     assert opportunity["sell_revenue"] == 1150
     assert opportunity["gross_profit"] == 350
     assert opportunity["roi"] == 0.4375
-
 
 
 def test_net_profit_applies_sales_tax_and_transport():
