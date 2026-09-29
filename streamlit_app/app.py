@@ -233,8 +233,9 @@ else:
                 }
                 for item in filtered
             ]
+            st.subheader("Detalhes")
             selected_idx = st.selectbox(
-                "Ver oportunidade",
+                "Selecionar operação",
                 options=range(len(filtered)),
                 format_func=lambda idx: (
                     f"{filtered[idx]['name']} · "
@@ -244,7 +245,7 @@ else:
             )
             selected = filtered[selected_idx]
 
-            with st.expander("Detalhes da operação", expanded=True):
+            with st.expander("Abrir detalhes da operação", expanded=True):
                 d1, d2, d3, d4 = st.columns(4)
                 d1.metric("Lucro líquido", f"{selected['net_profit']:,.0f} ISK")
                 d2.metric("ROI", f"{selected['roi']:.2%}")
