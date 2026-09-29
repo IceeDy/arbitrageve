@@ -1,5 +1,5 @@
-from arbitrageve.services.market_worker import collect_priority_regions
 from arbitrageve.db.database import SessionLocal, init_db
+from arbitrageve.services.market_worker import collect_priority_regions
 
 
 if __name__ == "__main__":
