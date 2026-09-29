@@ -16,7 +16,14 @@ from sqlalchemy import func, select
 from theme import apply_eve_theme, render_topbar
 
 from arbitrageve.db.database import DATABASE_URL, SessionLocal, init_db
-from arbitrageve.db.models import AppState, Item, MarketOrder, Region, SolarSystem, Stargate
+from arbitrageve.db.models import (
+    AppState,
+    Item,
+    MarketOrder,
+    Region,
+    SolarSystem,
+    Stargate,
+)
 from arbitrageve.esi.client import ESIRequestError
 from arbitrageve.market.collector import collect_region
 from arbitrageve.sde.loader import (
