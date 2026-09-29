@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -202,7 +202,7 @@ with SessionLocal() as session:
 
 if snapshot_rows:
     table_rows = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC).replace(tzinfo=None)
     for name, orders, collected_at in snapshot_rows:
         age_minutes = max(0.0, (now - collected_at).total_seconds() / 60) if collected_at else None
         if age_minutes is None:
