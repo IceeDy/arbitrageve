@@ -854,8 +854,9 @@ def test_global_isk_per_hour_ranking_widens_candidate_recall():
         diagnostics=diagnostics,
     )
 
-    assert len(result) == 1
+    assert len(result) == 2
     assert result[0]["name"] == "Fast Recall"
+    assert result[1]["name"] == "Slow Recall"
     assert diagnostics["candidate_pool_limit"] == 4
     assert diagnostics["global_candidates"] == 2
     assert diagnostics["detailed_scans"] == 2
