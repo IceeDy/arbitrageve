@@ -13,6 +13,7 @@ load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
 
 import streamlit as st
 from sqlalchemy import func, select
+from theme import apply_eve_theme, render_topbar
 
 from arbitrageve.db.database import DATABASE_URL, SessionLocal, init_db
 from arbitrageve.db.models import Item, MarketOrder, Region, SolarSystem, Stargate
@@ -27,7 +28,6 @@ from arbitrageve.sde.loader import (
     load_stargates_from_archive,
     load_types,
 )
-from theme import apply_eve_theme, render_topbar
 
 init_db()
 apply_eve_theme()
