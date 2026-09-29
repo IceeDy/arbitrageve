@@ -1,9 +1,11 @@
 from sqlalchemy.orm import sessionmaker
 
+from tests.db import create_test_engine
+
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import SolarSystem, Stargate
 from arbitrageve.sde.routes import LocalRouteClient
-from tests.db import create_test_engine
+
 
 def _session():
     engine = create_test_engine()
