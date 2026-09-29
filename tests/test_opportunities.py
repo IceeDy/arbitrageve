@@ -1,12 +1,12 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.execution import simulate_order_book_execution
 from arbitrageve.services.opportunities import (
+from tests.db import create_test_engine
     calculate_operational_score,
     discover_global_candidates,
     find_global_opportunities,
@@ -17,7 +17,7 @@ FRESH_COLLECTED_AT = datetime.now(UTC).replace(tzinfo=None)
 
 
 def test_order_book_depth_changes_effective_prices():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -66,7 +66,7 @@ def test_order_book_depth_changes_effective_prices():
 def test_isk_per_hour_uses_same_return_trip_time_as_estimated_minutes():
     from arbitrageve.market.metrics import ExecutionProfile, estimate_minutes
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -114,7 +114,7 @@ def test_isk_per_hour_uses_same_return_trip_time_as_estimated_minutes():
 def test_net_profit_applies_sales_tax_and_transport():
     from arbitrageve.market.costs import TradeCosts
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -157,7 +157,7 @@ def test_net_profit_applies_sales_tax_and_transport():
 
 
 def test_opportunity_exposes_liquidity_and_spread_metrics():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -204,7 +204,7 @@ def test_opportunity_exposes_liquidity_and_spread_metrics():
 
 
 def test_sort_by_applies_before_limit():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -259,7 +259,7 @@ def test_sort_by_applies_before_limit():
 def test_capital_sizing_includes_all_modeled_trade_costs():
     from arbitrageve.market.costs import TradeCosts
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -299,7 +299,7 @@ def test_capital_sizing_includes_all_modeled_trade_costs():
 
 
 def test_liquidity_class_uses_absolute_depth_and_book_coverage():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -338,7 +338,7 @@ def test_liquidity_class_uses_absolute_depth_and_book_coverage():
 
 
 def test_stale_market_snapshot_is_rejected():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -377,7 +377,7 @@ def test_stale_market_snapshot_is_rejected():
     assert diagnostics["rejected_stale_market"] == 1
 
 def test_execution_class_distinguishes_speculative_and_scalable_trades():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -447,7 +447,7 @@ def test_operational_score_is_transparent_and_rewards_execution_quality():
 
 
 def test_order_book_execution_simulation_reports_each_consumed_level():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -512,7 +512,7 @@ def test_order_book_execution_simulation_reports_each_consumed_level():
 
 
 def test_opportunity_exposes_execution_levels_and_marginal_prices():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -565,7 +565,7 @@ def test_opportunity_exposes_execution_levels_and_marginal_prices():
 
 
 def test_discover_global_candidates_finds_cross_region_pairs():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -605,7 +605,7 @@ def test_discover_global_candidates_finds_cross_region_pairs():
 
 
 def test_find_global_opportunities_uses_global_candidate_discovery():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -649,7 +649,7 @@ def test_find_global_opportunities_uses_global_candidate_discovery():
 
 
 def test_discover_global_candidates_filters_by_capital_cargo_and_profit():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
     session.add(Item(type_id=200, name="Bounded Item", volume=10.0))
@@ -795,7 +795,7 @@ def test_execution_auditor_detects_capital_cargo_book_and_stale_market():
 def test_global_isk_per_hour_ranking_widens_candidate_recall():
     from arbitrageve.market.metrics import ExecutionProfile
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -865,7 +865,7 @@ def test_global_isk_per_hour_ranking_widens_candidate_recall():
 def test_global_sort_by_isk_per_hour_uses_route_aware_execution_time():
     from arbitrageve.market.metrics import ExecutionProfile
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
