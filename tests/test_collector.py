@@ -141,7 +141,16 @@ def test_collect_region_preserves_order_fields_and_parses_issued_timestamp():
 
 def test_collect_regions_deduplicates_region_ids_and_collects_each():
     session = _session()
-    client = FakeMarketClient([[_order(30, price=5)]])
+
+    class RegionAwareFakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def get_orders(self, region_id, page=1):
+            self.calls.append((region_id, page))
+            return [_order(region_id, price=5)], 1
+
+    client = RegionAwareFakeClient()
     results = collect_regions(
         session,
         [10000002, 10000043, 10000002],
