@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -13,8 +13,6 @@ load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
 
 import streamlit as st
 from sqlalchemy import func, select
-
-from theme import apply_eve_theme, render_topbar
 
 from arbitrageve.db.database import DATABASE_URL, SessionLocal, init_db
 from arbitrageve.db.models import Item, MarketOrder, Region, SolarSystem, Stargate
@@ -29,6 +27,7 @@ from arbitrageve.sde.loader import (
     load_stargates_from_archive,
     load_types,
 )
+from theme import apply_eve_theme, render_topbar
 
 init_db()
 apply_eve_theme()
@@ -203,7 +202,7 @@ with SessionLocal() as session:
 
 if snapshot_rows:
     table_rows = []
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     for name, orders, collected_at in snapshot_rows:
         age_minutes = max(0.0, (now - collected_at).total_seconds() / 60) if collected_at else None
         if age_minutes is None:
