@@ -35,10 +35,11 @@ def select_regions_for_refresh(session, limit: int | None = None) -> list[Region
         region, last_collected = row
         overdue = last_collected is None or last_collected < cutoff
         configured = priority.get(region.name.lower(), 10_000)
+        fallback = datetime.min.replace(tzinfo=None)
         return (
             0 if overdue else 1,
             configured,
-            last_collected or datetime.min,
+            last_collected or fallback,
         )
 
     rows.sort(key=sort_key)
