@@ -525,7 +525,7 @@ def test_discover_global_candidates_finds_cross_region_pairs():
     session.commit()
 
     candidates = discover_global_candidates(
-        session, min_roi=0.0, max_candidates=10
+        session, min_roi=0.0, min_profit_isk=0.0, max_candidates=10
     )
 
     assert len(candidates) == 2
