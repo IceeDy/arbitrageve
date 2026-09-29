@@ -5,7 +5,7 @@ EVE Online market arbitrage scanner focused on executable cross-region opportuni
 ## Current architecture
 
 - **ESI client** with retries, pagination and the current POST route API
-- **SQLite for local development + PostgreSQL for persistent hosting** via SQLAlchemy
+- **PostgreSQL only via SQLAlchemy + psycopg**
 - **Persistent app state** for SDE and worker lifecycle metadata
 - **Market order schema** with price, volume, location, side and collection timestamp
 - **Cross-region arbitrage engine** constrained by capital, cargo and order-book depth
@@ -64,7 +64,7 @@ pytest
 
 ## Production persistence
 
-For hosted deployment, set `DATABASE_URL` to a persistent PostgreSQL database. Do not rely on the local SQLite filesystem for production data.
+For hosted deployment, set `DATABASE_URL` to a persistent PostgreSQL database. The application and test suite require PostgreSQL; there is no SQLite fallback.
 
 The Streamlit application bootstraps the SDE only when the persistent database is missing universe data. The market worker also performs this bootstrap, so the first scheduled worker run can initialize an empty persistent database without requiring a browser session.
 
