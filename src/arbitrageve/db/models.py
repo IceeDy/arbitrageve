@@ -14,11 +14,19 @@ class Item(Base):
     volume: Mapped[float] = mapped_column(Float, default=0)
 
 
+class Region(Base):
+    __tablename__ = "regions"
+
+    region_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+
+
 class SolarSystem(Base):
     __tablename__ = "solar_systems"
 
     system_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
+    region_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     security_status: Mapped[float] = mapped_column(Float, default=0)
 
     @property
