@@ -62,6 +62,55 @@ def test_order_book_depth_changes_effective_prices():
     assert opportunity["roi"] == 0.3296875
 
 
+
+def test_isk_per_hour_uses_same_return_trip_time_as_estimated_minutes():
+    from arbitrageve.market.metrics import ExecutionProfile, estimate_minutes
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add(Item(type_id=39, name="ISK/h consistency", volume=1.0))
+    session.add_all(
+        [
+            MarketOrder(
+                order_id=391, region_id=10000002, system_id=1, location_id=10,
+                type_id=39, price=100, volume_remain=10, volume_total=10,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+            ),
+            MarketOrder(
+                order_id=392, region_id=10000043, system_id=2, location_id=20,
+                type_id=39, price=150, volume_remain=10, volume_total=10,
+                is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+            ),
+        ]
+    )
+    session.commit()
+
+    profile = ExecutionProfile(
+        fixed_minutes=10.0,
+        minutes_per_jump=2.0,
+        return_trip=True,
+    )
+    result = find_opportunities(
+        session,
+        10000002,
+        10000043,
+        capital_isk=1_200,
+        cargo_m3=10,
+        min_roi=0.0,
+        min_profit_isk=0,
+        execution_profile=profile,
+    )
+
+    assert len(result) == 1
+    opportunity = result[0]
+    expected_minutes = estimate_minutes(opportunity["jumps"], profile)
+    assert opportunity["estimated_minutes"] == expected_minutes
+    assert opportunity["isk_per_hour"] == (
+        opportunity["net_profit"] / expected_minutes * 60
+    )
+
 def test_net_profit_applies_sales_tax_and_transport():
     from arbitrageve.market.costs import TradeCosts
 
