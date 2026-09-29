@@ -14,7 +14,7 @@ from theme import apply_eve_theme, render_topbar
 from arbitrageve.config.regions import REGIONS
 from arbitrageve.config.settings import settings
 from arbitrageve.db.database import SessionLocal, init_db
-from arbitrageve.db.models import Region, Stargate
+from arbitrageve.db.models import Region, SolarSystem, Stargate
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
 from arbitrageve.sde.routes import LocalRouteClient
@@ -338,6 +338,97 @@ else:
                     st.markdown(
                         f"**Snapshot:** {selected.get('market_age_minutes', 0):.1f} min"
                     )
+
+            st.markdown('<div class="eve-section">Opportunity intelligence</div>', unsafe_allow_html=True)
+            intelligence_left, intelligence_right = st.columns(2)
+
+            with intelligence_left:
+                st.markdown("**EXECUTION ECONOMICS**")
+                cost_rows = [
+                    {"Component": "Buy cost", "ISK": selected["buy_cost"]},
+                    {"Component": "Sales tax", "ISK": selected.get("sales_tax", 0.0)},
+                    {"Component": "Broker fee", "ISK": selected.get("broker_fee", 0.0)},
+                    {"Component": "Transport", "ISK": selected.get("transport_cost", 0.0)},
+                    {"Component": "Safety margin", "ISK": selected.get("safety_margin", 0.0)},
+                    {"Component": "Total modeled costs", "ISK": selected.get("total_costs", 0.0)},
+                    {"Component": "Sell revenue", "ISK": selected["sell_revenue"]},
+                    {"Component": "Net profit", "ISK": selected["net_profit"]},
+                ]
+                st.dataframe(
+                    cost_rows,
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "ISK": st.column_config.NumberColumn(format="%,.0f ISK"),
+                    },
+                )
+
+                e1, e2, e3 = st.columns(3)
+                e1.metric("Margin", f'{selected.get("spread_pct", 0.0):.2%}')
+                e2.metric("Profit / unit", f'{selected.get("profit_per_unit", 0.0):,.2f} ISK')
+                e3.metric("Capital efficiency", f'{selected.get("capital_efficiency", 0.0):.2%}')
+
+            with intelligence_right:
+                st.markdown("**DECISION FACTORS**")
+                factor_rows = [
+                    {"Factor": "Execution", "Value": selected.get("execution_class", "Executável")},
+                    {"Factor": "Liquidity", "Value": selected.get("liquidity_class", "Baixa")},
+                    {"Factor": "Book depth", "Value": f'{selected.get("book_capacity", 0):,} units'},
+                    {"Factor": "Book coverage", "Value": f'{selected.get("book_coverage", 0.0):.1%}'},
+                    {"Factor": "Market age", "Value": f'{selected.get("market_age_minutes", 0.0):.1f} min'},
+                    {"Factor": "Route", "Value": selected.get("route_class", "unknown")},
+                    {"Factor": "Risk score", "Value": f'{selected.get("risk_score", 0.0):.1f}'},
+                ]
+                st.dataframe(factor_rows, width="stretch", hide_index=True)
+
+                st.caption(
+                    f'Operational score: {selected.get("operational_score", 0.0):.1f}/100 · '
+                    f'{selected.get("operational_score_class", "n/a")}'
+                )
+
+            st.markdown('<div class="eve-section">Route intelligence</div>', unsafe_allow_html=True)
+            route_system_ids = selected.get("route_system_ids", [])
+            route_rows = []
+            if route_system_ids:
+                with SessionLocal() as route_session:
+                    route_systems = {
+                        system.system_id: system
+                        for system in route_session.query(SolarSystem)
+                        .filter(SolarSystem.system_id.in_(route_system_ids))
+                        .all()
+                    }
+                for position, system_id in enumerate(route_system_ids, start=1):
+                    system = route_systems.get(system_id)
+                    route_rows.append(
+                        {
+                            "Hop": position,
+                            "System": system.name if system else f"system:{system_id}",
+                            "Security": system.security_status if system else None,
+                            "Class": system.security_class if system else "unknown",
+                        }
+                    )
+
+            route_left, route_right = st.columns([2, 1])
+            with route_left:
+                if route_rows:
+                    st.dataframe(
+                        route_rows,
+                        width="stretch",
+                        hide_index=True,
+                        column_config={
+                            "Security": st.column_config.NumberColumn(format="%.2f"),
+                        },
+                    )
+                else:
+                    st.info("Rota não disponível no SDE.")
+            with route_right:
+                r1, r2 = st.columns(2)
+                r1.metric("Jumps", selected.get("jumps", 0))
+                r2.metric("Min security", f'{selected.get("min_security_status", 0.0):.2f}')
+                st.metric("Estimated time", f'{selected.get("estimated_minutes", 0.0):.0f} min')
+                st.metric("High-sec", selected.get("highsec_systems", 0))
+                st.metric("Low-sec", selected.get("lowsec_systems", 0))
+                st.metric("Null-sec", selected.get("nullsec_systems", 0))
 
             st.markdown('<div class="eve-section">Order book / execution</div>', unsafe_allow_html=True)
             st.caption(
