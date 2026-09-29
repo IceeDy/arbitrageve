@@ -9,6 +9,7 @@ load_repo_module("arbitrageve.db.models", "arbitrageve/db/models.py")
 load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
 
 import streamlit as st
+from theme import apply_eve_theme, render_topbar
 
 from arbitrageve.config.regions import REGIONS
 from arbitrageve.config.settings import settings
@@ -25,12 +26,13 @@ from arbitrageve.services.risk import RiskProfile
 
 st.set_page_config(page_title="ArbitragEVE", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
 init_db()
+apply_eve_theme()
+render_topbar("GLOBAL MARKET SCANNER")
 
-st.title("ArbitragEVE · Scanner")
-st.caption("Encontre operações executáveis, compare retorno, capital, liquidez e rota.")
+st.caption("Cross-region arbitrage · order-book execution · route-aware returns")
 
 with st.sidebar:
-    st.header("Operação")
+    st.header("Market")
     capital = st.number_input("Capital (ISK)", min_value=0.0, value=settings.capital_isk, step=1_000_000.0)
     cargo = st.number_input("Cargo (m³)", min_value=0.0, value=settings.cargo_m3, step=10.0)
     with SessionLocal() as region_session:
@@ -73,14 +75,14 @@ with st.sidebar:
     max_market_age = st.number_input("Snapshot máximo (min)", min_value=0.0, value=60.0, step=5.0)
 
     st.divider()
-    st.subheader("Filtros de execução")
+    st.subheader("Execution filters")
     min_quantity = st.number_input("Quantidade mínima", min_value=1, value=1, step=1)
     min_profit_unit = st.number_input("Lucro/unid. mínimo", min_value=0.0, value=0.0, step=100.0)
     max_capital = st.number_input("Capital máximo por operação", min_value=0.0, value=0.0, step=1_000_000.0, help="0 = sem limite")
     require_scalable = st.checkbox("Somente operações escaláveis", value=False)
 
     st.divider()
-    st.subheader("Rota")
+    st.subheader("Route")
     route_preference = st.selectbox(
         "Preferência",
         ["Shorter", "Safer", "LessSecure"],
@@ -92,7 +94,7 @@ with st.sidebar:
     max_jumps = st.number_input("Máximo de jumps", min_value=0, value=30, step=1)
 
     st.divider()
-    st.subheader("Rota e tempo")
+    st.subheader("Timing")
     fixed_minutes = st.number_input("Tempo fixo por operação (min)", min_value=0.0, value=10.0, step=1.0)
     minutes_per_jump = st.number_input("Tempo por jump (min)", min_value=0.0, value=2.0, step=0.5)
     return_trip = st.checkbox("Considerar viagem de retorno", value=False)
@@ -114,7 +116,7 @@ with st.sidebar:
     )
 
     st.divider()
-    st.subheader("Custos")
+    st.subheader("Costs")
     sales_tax = st.number_input("Sales tax (%)", min_value=0.0, max_value=100.0, value=7.5, step=0.1) / 100
     broker_fee = st.number_input("Broker fee (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.1) / 100
     transport_flat = st.number_input("Transporte por viagem (ISK)", min_value=0.0, value=0.0, step=10_000.0)
@@ -239,7 +241,7 @@ else:
             and (max_capital <= 0 or item.get("capital_required", 0.0) <= max_capital)
             and (not require_scalable or item.get("scalable", False))
         ]
-        st.subheader("Oportunidades")
+        st.subheader("Market opportunities")
         st.caption(f"{len(filtered)} operações atendem aos filtros atuais · {len(opportunities) - len(filtered)} ocultadas")
 
         if not filtered:
@@ -284,7 +286,7 @@ else:
                 }
                 for item in filtered
             ]
-            st.subheader("Detalhes")
+            st.subheader("Selected opportunity")
             selected_idx = st.selectbox(
                 "Selecionar operação",
                 options=range(len(filtered)),
@@ -406,7 +408,7 @@ else:
                     f'lucro líquido {selected["net_profit"]:,.0f} ISK'
                 )
 
-            st.subheader("Melhores operações")
+            st.subheader("Market watchlist")
 
             rank_options = {
                 "Lucro líquido": "net_profit",
@@ -449,7 +451,7 @@ else:
                     )
 
             st.divider()
-            st.subheader("Tabela completa")
+            st.subheader("Order-flow table")
             st.dataframe(
                 rows,
                 width="stretch",
