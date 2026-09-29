@@ -293,8 +293,9 @@ else:
                 "ISK/h": "isk_per_hour",
                 "Menor capital": "capital_required",
                 "Lucro por unidade": "profit_per_unit",
+                "Score operacional": "operational_score",
             }
-            rank_by = st.selectbox("Priorizar por", list(rank_options), index=1)
+            rank_by = st.selectbox("Priorizar por", list(rank_options), index=4)
             rank_key = rank_options[rank_by]
             ranked = sorted(
                 filtered,
@@ -319,7 +320,7 @@ else:
                     )
                     top[1].metric("Lucro", f"{item['net_profit']:,.0f}")
                     top[2].metric("ISK/h", f"{item['isk_per_hour']:,.0f}")
-                    top[3].metric("ROI", f"{item['roi']:.1%}")
+                    top[3].metric("Score", f"{item.get('operational_score', 0):.0f}/100")
                     st.caption(
                         f"{badge} {execution} · "
                         f"Capital {item['capital_required']:,.0f} ISK · "
