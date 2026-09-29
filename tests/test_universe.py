@@ -13,8 +13,6 @@ from arbitrageve.sde.loader import (
     load_stargates_from_archive,
     load_types,
 )
-
-
 from tests.db import create_test_engine
 
 
