@@ -439,7 +439,7 @@ def find_opportunities(
                 # A partial route cannot support a trustworthy security audit.
                 # Reject it rather than silently classifying only the systems
                 # that happened to be present in the database.
-                if missing_systems:
+                if missing_systems and route_client is not None:
                     if diagnostics is not None:
                         diagnostics["rejected_unknown_route"] += 1
                     continue
