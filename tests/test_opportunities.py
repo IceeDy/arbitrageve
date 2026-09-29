@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import Item, MarketOrder
-from arbitrageve.services.opportunities import find_opportunities
+from arbitrageve.services.opportunities import calculate_operational_score, find_opportunities
 
 FRESH_COLLECTED_AT = datetime.now(UTC).replace(tzinfo=None)
 
@@ -365,3 +365,27 @@ def test_execution_class_distinguishes_speculative_and_scalable_trades():
     assert scalable["scalable"] is True
     assert scalable["min_executable_quantity"] == 200
     assert scalable["profit_per_unit"] == scalable["net_profit"] / 200
+
+
+def test_operational_score_is_transparent_and_rewards_execution_quality():
+    scalable = calculate_operational_score({
+        "execution_class": "Escalável",
+        "liquidity_class": "Alta",
+        "roi": 0.30,
+        "isk_per_hour": 10_000_000,
+        "book_coverage": 0.20,
+        "risk_score": 0.10,
+    })
+    speculative = calculate_operational_score({
+        "execution_class": "Especulativa",
+        "liquidity_class": "Muito baixa",
+        "roi": 3.00,
+        "isk_per_hour": 10_000_000,
+        "book_coverage": 1.00,
+        "risk_score": 0.10,
+    })
+
+    assert 0 <= scalable["operational_score"] <= 100
+    assert scalable["operational_score"] > speculative["operational_score"]
+    assert scalable["score_execution"] == 100.0
+    assert scalable["score_liquidity"] == 100.0
