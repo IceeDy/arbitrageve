@@ -48,7 +48,9 @@ def sde_ready(session) -> bool:
 
 def ensure_sde(session, archive_path: Path | None = None, force: bool = False) -> bool:
     """Load the official SDE only when the persistent database needs it."""
-    if not force and get_state(session, SDE_STATE_KEY) == LOADER_VERSION and sde_ready(session):
+    if not force and sde_ready(session):
+        if get_state(session, SDE_STATE_KEY) != LOADER_VERSION:
+            set_state(session, SDE_STATE_KEY, LOADER_VERSION)
         return False
 
     archive = archive_path or Path("/tmp/arbitrageve/eve-sde-latest.zip")
