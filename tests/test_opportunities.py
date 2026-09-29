@@ -2,8 +2,6 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import sessionmaker
 
-from tests.db import create_test_engine
-
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.execution import simulate_order_book_execution
@@ -13,6 +11,9 @@ from arbitrageve.services.opportunities import (
     find_global_opportunities,
     find_opportunities,
 )
+
+from tests.db import create_test_engine
+
 
 FRESH_COLLECTED_AT = datetime.now(UTC).replace(tzinfo=None)
 
