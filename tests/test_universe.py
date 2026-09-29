@@ -7,14 +7,13 @@ from sqlalchemy.orm import sessionmaker
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import Item, Region, SolarSystem, Stargate
 from arbitrageve.sde.loader import (
-from tests.db import create_test_engine
     inspect_types_archive,
     load_regions_from_archive,
     load_solar_systems_from_archive,
     load_stargates_from_archive,
     load_types,
 )
-
+from tests.db import create_test_engine
 
 def _make_sde(tmp_path, records):
     archive_path = tmp_path / "sde.zip"
