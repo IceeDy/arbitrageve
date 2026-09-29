@@ -682,6 +682,28 @@ def discover_global_candidates(
     )
     return candidates[:max_candidates]
 
+
+def _deduplicate_opportunities(results, *, sort_by="net_profit"):
+    """Keep the best execution for each economic system-to-system lane."""
+    if not results:
+        return []
+
+    def sort_key(row):
+        return row.get(sort_by, row.get("net_profit", 0))
+
+    best_by_lane = {}
+    for row in results:
+        key = (
+            row.get("type_id"),
+            row.get("source_system_id"),
+            row.get("destination_system_id"),
+        )
+        current = best_by_lane.get(key)
+        if current is None or sort_key(row) > sort_key(current):
+            best_by_lane[key] = row
+
+    return list(best_by_lane.values())
+
 def find_global_opportunities(
     session,
     capital_isk,
@@ -752,10 +774,14 @@ def find_global_opportunities(
             diagnostics["detailed_scans"] += 1
         results.extend(detailed)
 
+    before_dedup = len(results)
+    results = _deduplicate_opportunities(results, sort_by=sort_by)
     results.sort(
         key=lambda row: row.get(sort_by, row.get("net_profit", 0)),
         reverse=True,
     )
     if diagnostics is not None:
+        diagnostics["opportunities_before_dedup"] = before_dedup
+        diagnostics["duplicates_removed"] = before_dedup - len(results)
         diagnostics["final_opportunities"] = min(len(results), limit)
     return results[:limit]
