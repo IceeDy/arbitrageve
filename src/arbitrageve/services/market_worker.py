@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 
 from arbitrageve.config.settings import settings
-from arbitrageve.db.models import MarketOrder, Region
+from arbitrageve.db.models import AppState, MarketOrder, Region
 from arbitrageve.market.collector import collect_region
 
 
@@ -46,8 +46,36 @@ def select_regions_for_refresh(session, limit: int | None = None) -> list[Region
     return [row[0] for row in rows[:limit]]
 
 
+def _set_worker_state(session, key: str, value: str) -> None:
+    state = session.get(AppState, key)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    if state is None:
+        session.add(AppState(key=key, value=value, updated_at=now))
+    else:
+        state.value = value
+        state.updated_at = now
+    session.commit()
+
+
 def collect_priority_regions(session, limit: int | None = None) -> dict[int, int]:
+    """Refresh overdue regions and persist worker health state."""
+    started_at = datetime.now(UTC).replace(tzinfo=None)
+    _set_worker_state(
+        session,
+        "market_worker.last_started_at",
+        started_at.isoformat(timespec="seconds"),
+    )
+    _set_worker_state(session, "market_worker.status", "RUNNING")
     results: dict[int, int] = {}
-    for region in select_regions_for_refresh(session, limit):
-        results[region.region_id] = collect_region(session, region.region_id)
-    return results
+    try:
+        for region in select_regions_for_refresh(session, limit):
+            results[region.region_id] = collect_region(session, region.region_id)
+        _set_worker_state(session, "market_worker.last_regions", ",".join(map(str, results)))
+        _set_worker_state(session, "market_worker.last_finished_at", datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds"))
+        _set_worker_state(session, "market_worker.status", "OK")
+        _set_worker_state(session, "market_worker.last_error", "")
+        return results
+    except Exception as exc:
+        _set_worker_state(session, "market_worker.status", "ERROR")
+        _set_worker_state(session, "market_worker.last_error", str(exc)[:450])
+        raise
