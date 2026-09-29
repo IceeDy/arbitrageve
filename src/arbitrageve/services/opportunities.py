@@ -475,14 +475,31 @@ def discover_global_candidates(
     session,
     *,
     min_roi: float = 0.05,
+    min_profit_isk: float = 100_000,
+    capital_isk: float | None = None,
+    cargo_m3: float | None = None,
+    max_market_age_minutes: float | None = 60.0,
     costs: TradeCosts | None = None,
     max_candidates: int = 200,
 ) -> list[dict]:
-    """Discover promising cross-region pairs using cheap aggregate prices."""
+    """Discover cross-region candidates using cheap, bounded SQL filters.
+
+    The result is intentionally an optimistic pre-route shortlist. It filters
+    on executable volume, capital/cargo bounds, snapshot freshness and a
+    conservative per-unit cost model before invoking the detailed engine.
+    """
     costs = costs or TradeCosts()
     costs.validate()
     if min_roi < 0:
         raise ValueError("min_roi must be non-negative")
+    if min_profit_isk < 0:
+        raise ValueError("min_profit_isk must be non-negative")
+    if capital_isk is not None and capital_isk < 0:
+        raise ValueError("capital_isk cannot be negative")
+    if cargo_m3 is not None and cargo_m3 < 0:
+        raise ValueError("cargo_m3 cannot be negative")
+    if max_market_age_minutes is not None and max_market_age_minutes < 0:
+        raise ValueError("max_market_age_minutes cannot be negative")
     if max_candidates < 1:
         raise ValueError("max_candidates must be positive")
 
@@ -492,6 +509,8 @@ def discover_global_candidates(
             MarketOrder.type_id.label("type_id"),
             func.min(MarketOrder.price).label("buy_price"),
             func.sum(MarketOrder.volume_remain).label("source_volume"),
+            func.max(MarketOrder.collected_at).label("source_latest"),
+            func.min(MarketOrder.collected_at).label("source_oldest"),
         )
         .where(
             MarketOrder.is_buy_order.is_(False),
@@ -506,6 +525,8 @@ def discover_global_candidates(
             MarketOrder.type_id.label("type_id"),
             func.max(MarketOrder.price).label("sell_price"),
             func.sum(MarketOrder.volume_remain).label("destination_volume"),
+            func.max(MarketOrder.collected_at).label("destination_latest"),
+            func.min(MarketOrder.collected_at).label("destination_oldest"),
         )
         .where(
             MarketOrder.is_buy_order.is_(True),
@@ -514,14 +535,8 @@ def discover_global_candidates(
         .group_by(MarketOrder.region_id, MarketOrder.type_id)
         .subquery()
     )
-    spread = buys.c.sell_price - sells.c.buy_price
-    net_per_unit = (
-        buys.c.sell_price * (1 - costs.sales_tax_rate - costs.broker_fee_rate)
-        - sells.c.buy_price
-    )
-    roi = net_per_unit / sells.c.buy_price
 
-    rows = session.execute(
+    stmt = (
         select(
             sells.c.type_id,
             sells.c.source_region_id,
@@ -530,8 +545,12 @@ def discover_global_candidates(
             buys.c.sell_price,
             sells.c.source_volume,
             buys.c.destination_volume,
-            spread.label("spread_isk"),
-            roi.label("optimistic_roi"),
+            sells.c.source_oldest,
+            buys.c.destination_oldest,
+            (
+                buys.c.sell_price
+                - sells.c.buy_price
+            ).label("spread_isk"),
         )
         .select_from(
             sells.join(
@@ -545,13 +564,95 @@ def discover_global_candidates(
         .where(
             sells.c.buy_price > 0,
             buys.c.sell_price > sells.c.buy_price,
-            roi >= min_roi,
         )
-        .order_by(roi.desc(), spread.desc())
-        .limit(max_candidates)
-    ).mappings().all()
-    return [dict(row) for row in rows]
+    )
 
+    if cargo_m3 is not None and cargo_m3 > 0:
+        # Item volume is resolved after the cheap market aggregation. This
+        # coarse filter only excludes impossible zero/negative cargo limits.
+        stmt = stmt.where(sells.c.source_volume > 0, buys.c.destination_volume > 0)
+
+    rows = session.execute(stmt).mappings().all()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    candidates = []
+
+    for row in rows:
+        if max_market_age_minutes is not None:
+            oldest = min(
+                timestamp
+                for timestamp in (
+                    row["source_oldest"],
+                    row["destination_oldest"],
+                )
+                if timestamp is not None
+            )
+            age_minutes = max(0.0, (now - oldest).total_seconds() / 60.0)
+            if age_minutes > max_market_age_minutes:
+                continue
+        else:
+            age_minutes = None
+
+        item = session.get(Item, row["type_id"])
+        volume = item.volume if item else 0.0
+        if volume <= 0:
+            continue
+
+        max_by_book = min(row["source_volume"], row["destination_volume"])
+        max_by_cargo = (
+            math.floor(cargo_m3 / volume + 1e-9)
+            if cargo_m3 is not None and cargo_m3 > 0
+            else max_by_book
+        )
+        max_quantity = min(max_by_book, max_by_cargo)
+        if max_quantity <= 0:
+            continue
+
+        buy_price = float(row["buy_price"])
+        sell_price = float(row["sell_price"])
+        net_per_unit = (
+            sell_price * (1 - costs.sales_tax_rate - costs.broker_fee_rate)
+            - buy_price
+        )
+        optimistic_roi = net_per_unit / buy_price if buy_price > 0 else 0.0
+        optimistic_profit = net_per_unit * max_quantity
+
+        if optimistic_roi < min_roi:
+            continue
+        if optimistic_profit < min_profit_isk:
+            continue
+        if capital_isk is not None and buy_price * max_quantity > capital_isk:
+            max_quantity = min(
+                max_quantity,
+                math.floor(capital_isk / buy_price),
+            )
+            optimistic_profit = net_per_unit * max_quantity
+            if max_quantity <= 0 or optimistic_profit < min_profit_isk:
+                continue
+
+        candidates.append({
+            "type_id": row["type_id"],
+            "source_region_id": row["source_region_id"],
+            "destination_region_id": row["destination_region_id"],
+            "buy_price": buy_price,
+            "sell_price": sell_price,
+            "source_volume": row["source_volume"],
+            "destination_volume": row["destination_volume"],
+            "spread_isk": row["spread_isk"],
+            "optimistic_roi": optimistic_roi,
+            "optimistic_profit": optimistic_profit,
+            "max_quantity_bound": int(max_quantity),
+            "market_age_minutes": age_minutes,
+        })
+
+    candidates.sort(
+        key=lambda row: (
+            row["optimistic_profit"],
+            row["optimistic_roi"],
+            row["spread_isk"],
+        ),
+        reverse=True,
+    )
+    return candidates[:max_candidates]
 
 def find_global_opportunities(
     session,
@@ -579,6 +680,10 @@ def find_global_opportunities(
         session,
         min_roi=min_roi,
         costs=costs,
+        min_profit_isk=min_profit_isk,
+        capital_isk=capital_isk,
+        cargo_m3=cargo_m3,
+        max_market_age_minutes=max_market_age_minutes,
         max_candidates=max_candidates,
     )
     if diagnostics is not None:
