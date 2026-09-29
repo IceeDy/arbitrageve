@@ -450,6 +450,14 @@ def test_order_book_execution_simulation_reports_each_consumed_level():
     assert result["sell_levels_used"] == 2
     assert result["buy_marginal_price"] == 110
     assert result["sell_marginal_price"] == 150
+    assert result["top_buy_price"] == 100
+    assert result["top_sell_price"] == 160
+    assert result["buy_slippage_isk"] == 2.0
+    assert result["sell_slippage_isk"] == 4.0
+    assert result["buy_slippage_pct"] == 0.02
+    assert result["sell_slippage_pct"] == 0.025
+    assert result["buy_book_coverage"] == 125 / 150
+    assert result["sell_book_coverage"] == 125 / 150
     assert result["sales_tax"] == 1_950
     assert result["net_profit"] == 4_800
 
@@ -495,6 +503,14 @@ def test_opportunity_exposes_execution_levels_and_marginal_prices():
     assert opportunity["sell_levels_used"] == 2
     assert opportunity["buy_marginal_price"] == 120
     assert opportunity["sell_marginal_price"] == 140
+    assert opportunity["top_buy_price"] == 100
+    assert opportunity["top_sell_price"] == 150
+    assert opportunity["buy_slippage_isk"] == (16000 / 150) - 100
+    assert opportunity["sell_slippage_isk"] == 150 - (22000 / 150)
+    assert opportunity["buy_slippage_pct"] == ((16000 / 150) - 100) / 100
+    assert opportunity["sell_slippage_pct"] == (150 - (22000 / 150)) / 150
+    assert opportunity["buy_book_coverage"] == 150 / 200
+    assert opportunity["sell_book_coverage"] == 150 / 200
     assert [level["quantity"] for level in opportunity["buy_levels"]] == [100, 50]
     assert [level["quantity"] for level in opportunity["sell_levels"]] == [100, 50]
 
