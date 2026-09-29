@@ -12,7 +12,6 @@ class Base(DeclarativeBase):
 
 
 def _sqlite_path(database_url: str) -> Path | None:
-    """Return the filesystem path for a SQLite URL, if applicable."""
     parsed = urlparse(database_url)
     if parsed.scheme != "sqlite":
         return None
@@ -25,7 +24,6 @@ def _sqlite_path(database_url: str) -> Path | None:
 
 
 def _prepare_database_url(database_url: str) -> str:
-    """Prepare a writable SQLite location and normalize PostgreSQL URLs."""
     if database_url.startswith("postgresql://"):
         return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
@@ -47,16 +45,11 @@ def _prepare_database_url(database_url: str) -> str:
 
 
 DATABASE_URL = _prepare_database_url(settings.database_url)
-engine = create_engine(
-    DATABASE_URL,
-    future=True,
-    pool_pre_ping=True,
-)
+engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
 
 
 def _migrate_sqlite_schema() -> None:
-    """Apply small additive migrations for existing local SQLite databases."""
     if not DATABASE_URL.startswith("sqlite:"):
         return
 
