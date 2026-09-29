@@ -581,3 +581,36 @@ def test_find_global_opportunities_uses_global_candidate_discovery():
     assert result[0]["destination_region_id"] == 10000043
     assert diagnostics["global_candidates"] == 1
     assert diagnostics["detailed_scans"] == 1
+
+
+def test_discover_global_candidates_filters_by_capital_cargo_and_profit():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    session.add(Item(type_id=200, name="Bounded Item", volume=10.0))
+    session.add_all([
+        MarketOrder(
+            order_id=2001, region_id=10000002, system_id=1, location_id=10,
+            type_id=200, price=100, volume_remain=100, volume_total=100,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=2002, region_id=10000043, system_id=2, location_id=20,
+            type_id=200, price=150, volume_remain=100, volume_total=100,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+    ])
+    session.commit()
+
+    candidates = discover_global_candidates(
+        session,
+        min_roi=0.0,
+        min_profit_isk=1_000,
+        capital_isk=2_000,
+        cargo_m3=50,
+        max_candidates=10,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]["max_quantity_bound"] == 5
+    assert candidates[0]["optimistic_profit"] == 212.5
