@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 
@@ -18,32 +18,63 @@ def _priority_map() -> dict[str, int]:
     return {name: index for index, name in enumerate(names)}
 
 
+def calculate_region_refresh_minutes(order_count: int) -> float:
+    """Return the target refresh interval for a region.
+
+    More orders mean more market state to keep current. The square-root
+    scaling avoids making very large regions impossible to maintain while
+    still giving them substantially shorter refresh intervals.
+    """
+    if order_count <= 0:
+        return float(settings.market_refresh_max_minutes)
+
+    reference = max(1, settings.market_refresh_reference_orders)
+    exponent = max(0.0, settings.market_refresh_order_exponent)
+    interval = settings.market_refresh_minutes * (
+        reference / max(order_count, 1)
+    ) ** exponent
+    return min(
+        float(settings.market_refresh_max_minutes),
+        max(float(settings.market_refresh_min_minutes), interval),
+    )
+
+
 def select_regions_for_refresh(session, limit: int | None = None) -> list[Region]:
-    """Select only the stalest overdue regions for one worker cycle."""
+    """Select regions whose adaptive refresh interval has elapsed."""
     limit = limit or settings.market_max_regions_per_run
     priority = _priority_map()
     now = datetime.now(UTC).replace(tzinfo=None)
-    cutoff = now - timedelta(minutes=settings.market_refresh_minutes)
 
     rows = session.execute(
-        select(Region, func.max(MarketOrder.collected_at).label("last_collected"))
+        select(
+            Region,
+            func.max(MarketOrder.collected_at).label("last_collected"),
+            func.count(MarketOrder.order_id).label("order_count"),
+        )
         .outerjoin(MarketOrder, MarketOrder.region_id == Region.region_id)
         .group_by(Region.region_id)
     ).all()
 
-    def sort_key(row):
-        region, last_collected = row
-        overdue = last_collected is None or last_collected < cutoff
-        configured = priority.get(region.name.lower(), 10_000)
-        fallback = datetime.min.replace(tzinfo=UTC).replace(tzinfo=None)
-        return (
-            0 if overdue else 1,
-            configured,
-            last_collected or fallback,
+    due_rows = []
+    for region, last_collected, order_count in rows:
+        refresh_minutes = calculate_region_refresh_minutes(order_count)
+        age_minutes = (
+            float("inf")
+            if last_collected is None
+            else max(0.0, (now - last_collected).total_seconds() / 60)
         )
+        if last_collected is None or age_minutes >= refresh_minutes:
+            due_rows.append(
+                (
+                    region,
+                    age_minutes / refresh_minutes if refresh_minutes else float("inf"),
+                    priority.get(region.name.lower(), 10_000),
+                    age_minutes,
+                )
+            )
 
-    rows.sort(key=sort_key)
-    return [row[0] for row in rows[:limit]]
+    due_rows.sort(key=lambda row: (-row[1], row[2], -row[3]))
+    return [row[0] for row in due_rows[:limit]]
 
 
 def _set_worker_state(session, key: str, value: str) -> None:
