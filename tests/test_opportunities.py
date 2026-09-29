@@ -790,3 +790,79 @@ def test_execution_auditor_detects_capital_cargo_book_and_stale_market():
     assert {"capital", "cargo", "order_book", "market_freshness"} <= set(
         audit["execution_audit_issues"]
     )
+
+
+def test_global_sort_by_isk_per_hour_uses_route_aware_execution_time():
+    from arbitrageve.market.metrics import ExecutionProfile
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add_all([
+        Item(type_id=102, name="Fast Global", volume=1.0),
+        Item(type_id=103, name="Slow Global", volume=1.0),
+    ])
+    session.add_all([
+        MarketOrder(
+            order_id=1021, region_id=10000002, system_id=1, location_id=10,
+            type_id=102, price=100, volume_remain=10, volume_total=10,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=1022, region_id=10000043, system_id=2, location_id=20,
+            type_id=102, price=150, volume_remain=10, volume_total=10,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=1031, region_id=10000002, system_id=1, location_id=10,
+            type_id=103, price=100, volume_remain=10, volume_total=10,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=1032, region_id=10000032, system_id=3, location_id=30,
+            type_id=103, price=150, volume_remain=10, volume_total=10,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+        SolarSystem(
+            system_id=1, name="Source", security_status=1.0, security_class="highsec"
+        ),
+        SolarSystem(
+            system_id=2, name="Fast Destination", security_status=1.0,
+            security_class="highsec"
+        ),
+        SolarSystem(
+            system_id=3, name="Slow Destination", security_status=1.0,
+            security_class="highsec"
+        ),
+    ])
+    session.commit()
+
+    class RouteByDestination:
+        def route(self, origin, destination, **kwargs):
+            if destination == 2:
+                return [origin, destination]
+            return [origin, 11, 12, 13, 14, 15, 16, 17, 18, 19, destination]
+
+    result = find_global_opportunities(
+        session,
+        capital_isk=2_000,
+        cargo_m3=10,
+        min_roi=0.0,
+        min_profit_isk=0,
+        route_client=RouteByDestination(),
+        execution_profile=ExecutionProfile(
+            fixed_minutes=10.0,
+            minutes_per_jump=2.0,
+            return_trip=False,
+        ),
+        sort_by="isk_per_hour",
+        max_candidates=10,
+    )
+
+    assert len(result) == 2
+    assert result[0]["name"] == "Fast Global"
+    assert result[1]["name"] == "Slow Global"
+    assert result[0]["net_profit"] == result[1]["net_profit"]
+    assert result[0]["estimated_minutes"] < result[1]["estimated_minutes"]
+    assert result[0]["isk_per_hour"] > result[1]["isk_per_hour"]
