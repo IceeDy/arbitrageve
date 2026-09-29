@@ -213,7 +213,8 @@ def audit_opportunity_execution(
     )
 
     route_ok = (
-        bool(route)
+        bool(opportunity.get("route_known", False))
+        and bool(route)
         and all(isinstance(system_id, int) for system_id in route)
         and len(route) == jumps + 1
         and opportunity.get("route_class") in {"highsec", "lowsec", "nullsec"}
