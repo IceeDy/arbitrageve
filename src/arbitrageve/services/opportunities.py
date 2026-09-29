@@ -620,9 +620,8 @@ def discover_global_candidates(
             continue
         if optimistic_profit < min_profit_isk:
             continue
-        if capital_isk is not None:
-            if buy_price * max_quantity > capital_isk:
-                max_quantity = min(
+        if capital_isk is not None and buy_price * max_quantity > capital_isk:
+            max_quantity = min(
                     max_quantity,
                     math.floor(capital_isk / buy_price),
                 )
@@ -685,7 +684,6 @@ def find_global_opportunities(
         capital_isk=capital_isk,
         cargo_m3=cargo_m3,
         max_market_age_minutes=max_market_age_minutes,
-        costs=costs,
         max_candidates=max_candidates,
     )
     if diagnostics is not None:
