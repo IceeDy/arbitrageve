@@ -792,6 +792,76 @@ def test_execution_auditor_detects_capital_cargo_book_and_stale_market():
     )
 
 
+def test_global_isk_per_hour_ranking_widens_candidate_recall():
+    from arbitrageve.market.metrics import ExecutionProfile
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add_all([
+        Item(type_id=104, name="Fast Recall", volume=1.0),
+        Item(type_id=105, name="Slow Recall", volume=1.0),
+    ])
+    session.add_all([
+        MarketOrder(
+            order_id=1041, region_id=10000002, system_id=1, location_id=10,
+            type_id=104, price=100, volume_remain=10, volume_total=10,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=1042, region_id=10000043, system_id=2, location_id=20,
+            type_id=104, price=150, volume_remain=10, volume_total=10,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=1051, region_id=10000002, system_id=1, location_id=10,
+            type_id=105, price=100, volume_remain=10, volume_total=10,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=1052, region_id=10000032, system_id=3, location_id=30,
+            type_id=105, price=200, volume_remain=10, volume_total=10,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+        SolarSystem(system_id=1, name="Source", security_status=1.0),
+        SolarSystem(system_id=2, name="Fast Destination", security_status=1.0),
+        SolarSystem(system_id=3, name="Slow Destination", security_status=1.0),
+    ])
+    session.commit()
+
+    class RouteByDestination:
+        def route(self, origin, destination, **kwargs):
+            if destination == 2:
+                return [origin, destination]
+            return [origin, 11, 12, 13, 14, 15, 16, 17, 18, 19, destination]
+
+    diagnostics = {}
+    result = find_global_opportunities(
+        session,
+        capital_isk=2_000,
+        cargo_m3=10,
+        min_roi=0.0,
+        min_profit_isk=0,
+        route_client=RouteByDestination(),
+        execution_profile=ExecutionProfile(
+            fixed_minutes=10.0,
+            minutes_per_jump=2.0,
+            return_trip=False,
+        ),
+        sort_by="isk_per_hour",
+        max_candidates=1,
+        diagnostics=diagnostics,
+    )
+
+    assert len(result) == 2
+    assert result[0]["name"] == "Fast Recall"
+    assert result[1]["name"] == "Slow Recall"
+    assert diagnostics["candidate_pool_limit"] == 4
+    assert diagnostics["global_candidates"] == 2
+    assert diagnostics["detailed_scans"] == 2
+
+
 def test_global_sort_by_isk_per_hour_uses_route_aware_execution_time():
     from arbitrageve.market.metrics import ExecutionProfile
 

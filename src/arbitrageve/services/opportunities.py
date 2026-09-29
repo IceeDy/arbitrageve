@@ -856,6 +856,14 @@ def find_global_opportunities(
 ):
     """Find executable arbitrage across the loaded market universe."""
     costs = costs or TradeCosts()
+    # Route-aware ISK/h is only known after the detailed scan. When that
+    # metric drives the final ranking, keep a wider SQL-first candidate pool
+    # so a route-fast opportunity is not discarded solely because its
+    # route-agnostic optimistic profit is smaller.
+    discovery_candidates = max_candidates
+    if sort_by == "isk_per_hour":
+        discovery_candidates = min(max_candidates * 4, 1000)
+
     candidates = discover_global_candidates(
         session,
         min_roi=min_roi,
@@ -864,12 +872,13 @@ def find_global_opportunities(
         capital_isk=capital_isk,
         cargo_m3=cargo_m3,
         max_market_age_minutes=max_market_age_minutes,
-        max_candidates=max_candidates,
+        max_candidates=discovery_candidates,
     )
     if diagnostics is not None:
         diagnostics.clear()
         diagnostics.update({
             "global_candidates": len(candidates),
+            "candidate_pool_limit": discovery_candidates,
             "candidate_region_pairs": len({
                 (row["source_region_id"], row["destination_region_id"])
                 for row in candidates
