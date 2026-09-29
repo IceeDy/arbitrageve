@@ -16,10 +16,10 @@ from arbitrageve.config.regions import REGIONS
 from arbitrageve.config.settings import settings
 from arbitrageve.db.database import SessionLocal, init_db
 from arbitrageve.db.models import Region, SolarSystem, Stargate
-from arbitrageve.services.data_bootstrap import ensure_sde
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
 from arbitrageve.sde.routes import LocalRouteClient
+from arbitrageve.services.data_bootstrap import ensure_sde
 from arbitrageve.services.opportunities import (
     find_global_opportunities,
     find_opportunities,
