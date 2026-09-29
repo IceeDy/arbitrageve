@@ -9,8 +9,6 @@ from arbitrageve.services.market_worker import (
     calculate_region_refresh_minutes,
     select_regions_for_refresh,
 )
-
-
 from tests.db import create_test_engine
 
 
