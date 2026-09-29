@@ -10,7 +10,7 @@ load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
 
 import streamlit as st
 
-from arbitrageve.config.regions import REGIONS, THE_FORGE
+from arbitrageve.config.regions import REGIONS
 from arbitrageve.config.settings import settings
 from arbitrageve.db.database import SessionLocal, init_db
 from arbitrageve.db.models import Region, Stargate
