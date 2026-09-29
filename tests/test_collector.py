@@ -3,15 +3,16 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
-from tests.db import create_test_engine
-
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import MarketOrder
 from arbitrageve.market.collector import collect_region, collect_regions
 
 
 class FakeMarketClient:
-    def __init__(self, pages):
+    from tests.db import create_test_engine
+
+
+def __init__(self, pages):
         self.pages = pages
         self.calls = []
 
