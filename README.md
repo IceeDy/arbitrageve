@@ -5,7 +5,8 @@ EVE Online market arbitrage scanner focused on executable cross-region opportuni
 ## Current architecture
 
 - **ESI client** with retries, pagination and the current POST route API
-- **SQLite + SQLAlchemy** persistence
+- **SQLite for local development + PostgreSQL for persistent hosting** via SQLAlchemy
+- **Persistent app state** for SDE and worker lifecycle metadata
 - **Market order schema** with price, volume, location, side and collection timestamp
 - **Cross-region arbitrage engine** constrained by capital, cargo and order-book depth
 - **Net profitability model** with sales tax, optional broker fee, transport and safety margin
@@ -15,6 +16,7 @@ EVE Online market arbitrage scanner focused on executable cross-region opportuni
 - **ISK/hour and capital-efficiency metrics** for ranking opportunities
 - **Streamlit dashboard** for scanning and configuration
 - **Official EVE SDE loader** for item names, volumes, system names, security status and static stargate connections
+- **Incremental market worker** that refreshes stale regions instead of blocking the application on a full-universe collection
 
 Initial target markets:
 
@@ -36,16 +38,22 @@ Create `.env` from `.env.example`, then:
 streamlit run streamlit_app/app.py
 ```
 
-Collect the initial market snapshot:
+Bootstrap the official SDE:
 
 ```bash
-python scripts/collect_market.py
+python scripts/bootstrap_data.py
 ```
 
-Load item, solar-system and stargate metadata:
+Force an SDE refresh:
 
 ```bash
-python scripts/load_sde.py
+python scripts/bootstrap_data.py --force
+```
+
+Collect the next stale market region:
+
+```bash
+python scripts/market_worker.py
 ```
 
 Run tests:
@@ -53,6 +61,21 @@ Run tests:
 ```bash
 pytest
 ```
+
+## Production persistence
+
+For hosted deployment, set `DATABASE_URL` to a persistent PostgreSQL database. Do not rely on the local SQLite filesystem for production data.
+
+The Streamlit application bootstraps the SDE only when the persistent database is missing universe data. The market worker also performs this bootstrap, so the first scheduled worker run can initialize an empty persistent database without requiring a browser session.
+
+GitHub Actions provides two scheduled jobs:
+
+- **Market Worker:** runs every 15 minutes and refreshes at most one stale region per run by default.
+- **SDE Refresh:** runs weekly and force-refreshes the official SDE.
+
+Both workflows require the repository secrets `DATABASE_URL` and `ESI_USER_AGENT`.
+
+The market worker records its last start, completion, status, regions and error in `app_state`. The Data Center page exposes this state so deployment problems are visible without inspecting workflow logs.
 
 ## Scanner model
 
@@ -84,9 +107,11 @@ The resulting **ISK/hour is an estimate**, not a realized performance metric. Fu
 
 Market collection fetches every page before replacing the previous region snapshot. This prevents stale orders from remaining in the database after they disappear from the latest complete ESI snapshot.
 
+The worker selects overdue regions first, then applies the configured hub priority. This keeps the expensive ESI collection incremental rather than loading every region during application startup.
+
 ## Next milestones
 
-1. Load station names and richer location metadata from SDE.
+1. Add station/location metadata for human-readable market lanes.
 2. Improve lane selection beyond one source station and one destination station.
 3. Add character skills/standings profiles for more accurate fee assumptions.
 4. Add execution tracking and realized ISK/hour.
