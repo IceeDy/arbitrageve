@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from arbitrageve.db.database import Base
-from arbitrageve.db.models import Item, MarketOrder
+from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.execution import simulate_order_book_execution
 from arbitrageve.services.opportunities import (
     calculate_operational_score,
