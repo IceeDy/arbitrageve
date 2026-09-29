@@ -12,7 +12,6 @@ class Base(DeclarativeBase):
 
 
 def _sqlite_path(database_url: str) -> Path | None:
-    """Return the filesystem path for a SQLite URL, if applicable."""
     parsed = urlparse(database_url)
     if parsed.scheme != "sqlite":
         return None
@@ -25,7 +24,9 @@ def _sqlite_path(database_url: str) -> Path | None:
 
 
 def _prepare_database_url(database_url: str) -> str:
-    """Prepare a writable SQLite location when running in hosted environments."""
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
     path = _sqlite_path(database_url)
     if path is None:
         return database_url
@@ -44,22 +45,23 @@ def _prepare_database_url(database_url: str) -> str:
 
 
 DATABASE_URL = _prepare_database_url(settings.database_url)
-engine = create_engine(DATABASE_URL, future=True)
+engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
 
 
 def _migrate_sqlite_schema() -> None:
-    """Apply small additive migrations for existing local SQLite databases."""
     if not DATABASE_URL.startswith("sqlite:"):
         return
 
     inspector = inspect(engine)
-    columns = {column["name"] for column in inspector.get_columns("solar_systems")}
-    if "region_id" not in columns:
-        with engine.begin() as connection:
-            connection.execute(
-                text("ALTER TABLE solar_systems ADD COLUMN region_id INTEGER")
-            )
+    tables = set(inspector.get_table_names())
+    if "solar_systems" in tables:
+        columns = {column["name"] for column in inspector.get_columns("solar_systems")}
+        if "region_id" not in columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE solar_systems ADD COLUMN region_id INTEGER")
+                )
 
 
 def init_db() -> None:

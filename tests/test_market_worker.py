@@ -1,0 +1,108 @@
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from arbitrageve.config.settings import settings
+from arbitrageve.db.database import Base
+from arbitrageve.db.models import MarketOrder, Region
+from arbitrageve.services.market_worker import select_regions_for_refresh
+
+
+def _session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
+
+
+def test_select_regions_prioritizes_overdue_configured_hubs():
+    session = _session()
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    forge = Region(region_id=10000002, name="The Forge")
+    domain = Region(region_id=10000043, name="Domain")
+    remote = Region(region_id=10000070, name="Genesis")
+    session.add_all([forge, domain, remote])
+    session.commit()
+
+    session.add_all(
+        [
+            MarketOrder(
+                order_id=1,
+                region_id=forge.region_id,
+                system_id=30000001,
+                location_id=60000001,
+                type_id=34,
+                price=1,
+                volume_remain=1,
+                volume_total=1,
+                is_buy_order=False,
+                collected_at=now - timedelta(minutes=90),
+            ),
+            MarketOrder(
+                order_id=2,
+                region_id=domain.region_id,
+                system_id=30000002,
+                location_id=60000002,
+                type_id=34,
+                price=1,
+                volume_remain=1,
+                volume_total=1,
+                is_buy_order=False,
+                collected_at=now - timedelta(minutes=90),
+            ),
+        ]
+    )
+    session.commit()
+
+    old_refresh = settings.market_refresh_minutes
+    old_limit = settings.market_max_regions_per_run
+    old_priority = settings.market_region_priority
+    try:
+        settings.market_refresh_minutes = 60
+        settings.market_max_regions_per_run = 3
+        settings.market_region_priority = "The Forge,Domain"
+        selected = select_regions_for_refresh(session)
+    finally:
+        settings.market_refresh_minutes = old_refresh
+        settings.market_max_regions_per_run = old_limit
+        settings.market_region_priority = old_priority
+
+    assert [region.name for region in selected] == ["The Forge", "Domain", "Genesis"]
+
+
+def test_select_regions_keeps_fresh_regions_after_overdue_regions():
+    session = _session()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    session.add_all(
+        [
+            Region(region_id=1, name="Fresh"),
+            Region(region_id=2, name="Old"),
+        ]
+    )
+    session.commit()
+
+    session.add(
+        MarketOrder(
+            order_id=10,
+            region_id=1,
+            system_id=30000001,
+            location_id=60000001,
+            type_id=34,
+            price=1,
+            volume_remain=1,
+            volume_total=1,
+            is_buy_order=False,
+            collected_at=now - timedelta(minutes=5),
+        )
+    )
+    session.commit()
+
+    old_refresh = settings.market_refresh_minutes
+    try:
+        settings.market_refresh_minutes = 30
+        selected = select_regions_for_refresh(session, limit=1)
+    finally:
+        settings.market_refresh_minutes = old_refresh
+
+    assert [region.name for region in selected] == ["Old"]

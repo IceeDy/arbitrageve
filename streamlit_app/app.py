@@ -7,6 +7,7 @@ from runtime import load_repo_module
 load_repo_module("arbitrageve.db.database", "arbitrageve/db/database.py")
 load_repo_module("arbitrageve.db.models", "arbitrageve/db/models.py")
 load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
+load_repo_module("arbitrageve.services.data_bootstrap", "arbitrageve/services/data_bootstrap.py")
 
 import streamlit as st
 from theme import apply_eve_theme, render_topbar
@@ -18,6 +19,7 @@ from arbitrageve.db.models import Region, SolarSystem, Stargate
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
 from arbitrageve.sde.routes import LocalRouteClient
+from arbitrageve.services.data_bootstrap import ensure_sde
 from arbitrageve.services.opportunities import (
     find_global_opportunities,
     find_opportunities,
@@ -26,6 +28,8 @@ from arbitrageve.services.risk import RiskProfile
 
 st.set_page_config(page_title="ArbitragEVE", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
 init_db()
+with SessionLocal() as bootstrap_session:
+    ensure_sde(bootstrap_session)
 apply_eve_theme()
 render_topbar("GLOBAL MARKET SCANNER")
 
