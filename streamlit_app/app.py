@@ -23,8 +23,8 @@ from arbitrageve.services.risk import RiskProfile
 st.set_page_config(page_title="ArbitragEVE", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
 init_db()
 
-st.title("ArbitragEVE")
-st.caption("Scanner de arbitragem entre regiões — encontre operações executáveis, veja o risco e decida onde alocar seu ISK.")
+st.title("ArbitragEVE · Scanner")
+st.caption("Encontre operações executáveis, compare retorno, capital, liquidez e rota.")
 
 with st.sidebar:
     st.header("Operação")
@@ -233,6 +233,58 @@ else:
                 }
                 for item in filtered
             ]
+            selected_idx = st.selectbox(
+                "Ver oportunidade",
+                options=range(len(filtered)),
+                format_func=lambda idx: (
+                    f"{filtered[idx]['name']} · "
+                    f"{filtered[idx]['net_profit']:,.0f} ISK · "
+                    f"{filtered[idx].get('execution_class', 'Executável')}"
+                ),
+            )
+            selected = filtered[selected_idx]
+
+            with st.expander("Detalhes da operação", expanded=True):
+                d1, d2, d3, d4 = st.columns(4)
+                d1.metric("Lucro líquido", f"{selected['net_profit']:,.0f} ISK")
+                d2.metric("ROI", f"{selected['roi']:.2%}")
+                d3.metric("Capital", f"{selected['capital_required']:,.0f} ISK")
+                d4.metric("ISK/h", f"{selected['isk_per_hour']:,.0f}")
+
+                st.markdown(
+                    f"**{selected['name']}** · {selected['quantity']:,} unidades · "
+                    f"{selected['volume_m3']:,.1f} m³"
+                )
+                left, right = st.columns(2)
+                with left:
+                    st.markdown(
+                        f"**Compra:** {selected['avg_buy_price']:,.2f} ISK/unid. "
+                        f"em {selected['source_system_name']}"
+                    )
+                    st.markdown(
+                        f"**Venda:** {selected['avg_sell_price']:,.2f} ISK/unid. "
+                        f"em {selected['destination_system_name']}"
+                    )
+                    st.markdown(
+                        f"**Investimento:** {selected['buy_cost']:,.0f} ISK · "
+                        f"**Lucro/unid.:** {selected.get('profit_per_unit', 0):,.2f} ISK"
+                    )
+                with right:
+                    st.markdown(
+                        f"**Rota:** {selected['jumps']} jumps · {selected['route_class']}"
+                    )
+                    st.markdown(
+                        f"**Execução:** {selected.get('execution_class', 'Executável')} · "
+                        f"**Liquidez:** {selected.get('liquidity_class', 'Baixa')}"
+                    )
+                    st.markdown(
+                        f"**Book:** {selected.get('book_capacity', 0):,} unidades · "
+                        f"cobertura {selected.get('book_coverage', 0):.1%}"
+                    )
+                    st.markdown(
+                        f"**Snapshot:** {selected.get('market_age_minutes', 0):.1f} min"
+                    )
+
             st.dataframe(
                 rows,
                 width="stretch",
