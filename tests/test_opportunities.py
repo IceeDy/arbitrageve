@@ -11,7 +11,6 @@ from arbitrageve.services.opportunities import (
     find_global_opportunities,
     find_opportunities,
 )
-
 from tests.db import create_test_engine
 
 
