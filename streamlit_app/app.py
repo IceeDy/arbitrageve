@@ -285,6 +285,49 @@ else:
                         f"**Snapshot:** {selected.get('market_age_minutes', 0):.1f} min"
                     )
 
+            st.subheader("Melhores operações")
+
+            rank_options = {
+                "Lucro líquido": "net_profit",
+                "ISK/h": "isk_per_hour",
+                "Menor capital": "capital_required",
+                "Lucro por unidade": "profit_per_unit",
+            }
+            rank_by = st.selectbox("Priorizar por", list(rank_options), index=1)
+            rank_key = rank_options[rank_by]
+            ranked = sorted(
+                filtered,
+                key=lambda item: item.get(rank_key, 0.0),
+                reverse=rank_key != "capital_required",
+            )
+
+            for idx, item in enumerate(ranked[:6], start=1):
+                execution = item.get("execution_class", "Executável")
+                badge = {
+                    "Escalável": "🟢",
+                    "Executável": "🟡",
+                    "Especulativa": "🔴",
+                }.get(execution, "⚪")
+                card = st.container(border=True)
+                with card:
+                    top = st.columns([3, 1, 1, 1])
+                    top[0].markdown(f"### {idx}. {item['name']}")
+                    top[0].caption(
+                        f"{item['source_system_name']} → {item['destination_system_name']} · "
+                        f"{item['quantity']:,} un. · {item['jumps']} jumps"
+                    )
+                    top[1].metric("Lucro", f"{item['net_profit']:,.0f}")
+                    top[2].metric("ISK/h", f"{item['isk_per_hour']:,.0f}")
+                    top[3].metric("ROI", f"{item['roi']:.1%}")
+                    st.caption(
+                        f"{badge} {execution} · "
+                        f"Capital {item['capital_required']:,.0f} ISK · "
+                        f"{item.get('profit_per_unit', 0):,.2f} ISK/unid. · "
+                        f"Book {item.get('book_capacity', 0):,} un."
+                    )
+
+            st.divider()
+            st.subheader("Tabela completa")
             st.dataframe(
                 rows,
                 width="stretch",
