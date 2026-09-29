@@ -622,12 +622,12 @@ def discover_global_candidates(
             continue
         if capital_isk is not None and buy_price * max_quantity > capital_isk:
             max_quantity = min(
-                    max_quantity,
-                    math.floor(capital_isk / buy_price),
-                )
-                optimistic_profit = net_per_unit * max_quantity
-                if max_quantity <= 0 or optimistic_profit < min_profit_isk:
-                    continue
+                max_quantity,
+                math.floor(capital_isk / buy_price),
+            )
+            optimistic_profit = net_per_unit * max_quantity
+            if max_quantity <= 0 or optimistic_profit < min_profit_isk:
+                continue
 
         candidates.append({
             "type_id": row["type_id"],
