@@ -7,13 +7,13 @@ from urllib.request import Request, urlopen
 
 from sqlalchemy.orm import Session
 
-from arbitrageve.db.models import Item, SolarSystem, Stargate
+from arbitrageve.db.models import Item, Region, SolarSystem, Stargate
 
 LATEST_SDE_URL = (
     "https://developers.eveonline.com/static-data/"
     "eve-online-static-data-latest-jsonl.zip"
 )
-LOADER_VERSION = "2026-09-28-local-routing-1"
+LOADER_VERSION = "2026-09-29-universe-foundation-1"
 
 
 def download_latest_sde(destination: Path) -> Path:
@@ -21,7 +21,7 @@ def download_latest_sde(destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     request = Request(
         LATEST_SDE_URL,
-        headers={"User-Agent": "ArbitrageVE/0.4.0"},
+        headers={"User-Agent": "ArbitrageVE/0.5.0"},
     )
     with urlopen(request, timeout=120) as response, destination.open("wb") as output:
         output.write(response.read())
@@ -41,7 +41,6 @@ def _find_member(archive: zipfile.ZipFile, suffix: str) -> str:
 
 
 def _value(record: dict) -> dict:
-    """Return the payload for both current and legacy JSONL record shapes."""
     value = record.get("_value")
     if isinstance(value, dict):
         return value
@@ -49,7 +48,6 @@ def _value(record: dict) -> dict:
 
 
 def _localized_name(value: object) -> str | None:
-    """Extract an English/display name from current SDE name shapes."""
     if isinstance(value, str):
         return value.strip() or None
     if isinstance(value, dict):
@@ -79,7 +77,6 @@ def inspect_types_archive(archive_path: Path) -> dict:
         keyed = 0
         named = 0
         samples = []
-
         with archive.open(member) as stream:
             for raw_line in stream:
                 if not raw_line.strip():
@@ -95,7 +92,6 @@ def inspect_types_archive(archive_path: Path) -> dict:
                     samples.append(record)
                 if lines >= 100:
                     break
-
     return {
         "loader_version": LOADER_VERSION,
         "member": member,
@@ -107,7 +103,6 @@ def inspect_types_archive(archive_path: Path) -> dict:
 
 
 def load_types_from_archive(archive_path: Path, session: Session) -> int:
-    """Load type IDs, names and volumes from the current official JSONL SDE."""
     with zipfile.ZipFile(archive_path) as archive:
         member = _find_member(archive, "types.jsonl")
         count = 0
@@ -115,11 +110,9 @@ def load_types_from_archive(archive_path: Path, session: Session) -> int:
             for raw_line in stream:
                 if not raw_line.strip():
                     continue
-
                 record = json.loads(raw_line)
                 if "_key" not in record:
                     continue
-
                 type_id = int(record["_key"])
                 value = _value(record)
                 name = _record_name(value)
@@ -128,25 +121,40 @@ def load_types_from_archive(archive_path: Path, session: Session) -> int:
                     volume = value.get("packagedVolume")
                 if volume is None:
                     volume = 0.0
-
                 if not name:
                     continue
+                session.merge(Item(type_id=type_id, name=name, volume=float(volume)))
+                count += 1
+    session.commit()
+    return count
 
+
+def load_regions_from_archive(archive_path: Path, session: Session) -> int:
+    """Load every region defined by the official SDE map data."""
+    with zipfile.ZipFile(archive_path) as archive:
+        member = _find_member(archive, "mapRegions.jsonl")
+        count = 0
+        with archive.open(member) as stream:
+            for raw_line in stream:
+                if not raw_line.strip():
+                    continue
+                record = json.loads(raw_line)
+                if "_key" not in record:
+                    continue
+                value = _value(record)
+                name = _record_name(value)
+                if not name:
+                    continue
                 session.merge(
-                    Item(
-                        type_id=type_id,
-                        name=name,
-                        volume=float(volume),
-                    )
+                    Region(region_id=int(record["_key"]), name=name)
                 )
                 count += 1
-
     session.commit()
     return count
 
 
 def load_solar_systems_from_archive(archive_path: Path, session: Session) -> int:
-    """Load solar-system names and security status from the official JSONL SDE."""
+    """Load solar systems, including their parent region."""
     with zipfile.ZipFile(archive_path) as archive:
         member = _find_member(archive, "mapSolarSystems.jsonl")
         count = 0
@@ -154,31 +162,28 @@ def load_solar_systems_from_archive(archive_path: Path, session: Session) -> int
             for raw_line in stream:
                 if not raw_line.strip():
                     continue
-
                 record = json.loads(raw_line)
                 system_id = int(record["_key"])
                 value = _value(record)
-
                 name = _record_name(value)
                 security_status = value.get("securityStatus")
+                region_id = value.get("regionID")
                 if not name or security_status is None:
                     continue
-
                 session.merge(
                     SolarSystem(
                         system_id=system_id,
                         name=name,
+                        region_id=int(region_id) if region_id is not None else None,
                         security_status=float(security_status),
                     )
                 )
                 count += 1
-
     session.commit()
     return count
 
 
 def load_stargates_from_archive(archive_path: Path, session: Session) -> int:
-    """Load static stargate connections from the official SDE."""
     with zipfile.ZipFile(archive_path) as archive:
         member = _find_member(archive, "mapStargates.jsonl")
         count = 0
@@ -203,7 +208,6 @@ def load_stargates_from_archive(archive_path: Path, session: Session) -> int:
                     )
                 )
                 count += 1
-
     session.commit()
     return count
 
