@@ -83,7 +83,7 @@ def test_select_regions_prioritizes_overdue_configured_hubs():
         settings.market_max_regions_per_run = old_limit
         settings.market_region_priority = old_priority
 
-    assert [region.name for region in selected] == ["The Forge", "Domain"]
+    assert [region.name for region in selected] == ["The Forge", "Domain", "Genesis"]
 
 
 def test_select_regions_keeps_fresh_regions_after_overdue_regions():
