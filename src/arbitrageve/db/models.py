@@ -66,3 +66,11 @@ class MarketOrder(Base):
         Index("ix_market_orders_region_type_side", "region_id", "type_id", "is_buy_order"),
         Index("ix_market_orders_type_price", "type_id", "price"),
     )
+
+
+class AppState(Base):
+    __tablename__ = "app_state"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(String(500))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, index=True)
