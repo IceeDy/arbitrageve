@@ -32,10 +32,26 @@ def main() -> int:
         latest_market = session.scalar(
             select(func.max(MarketOrder.collected_at)).select_from(MarketOrder)
         )
+        market_regions = session.scalar(
+            select(func.count(func.distinct(MarketOrder.region_id)))
+        ) or 0
+        market_types = session.scalar(
+            select(func.count(func.distinct(MarketOrder.type_id)))
+        ) or 0
+        buy_orders = session.scalar(
+            select(func.count()).select_from(MarketOrder).where(MarketOrder.is_buy_order.is_(True))
+        ) or 0
+        sell_orders = session.scalar(
+            select(func.count()).select_from(MarketOrder).where(MarketOrder.is_buy_order.is_(False))
+        ) or 0
 
     print("ArbitragEVE production health")
     for key, value in counts.items():
         print(f"{key}: {value:,}")
+    print(f"market_regions: {market_regions:,}")
+    print(f"market_types: {market_types:,}")
+    print(f"buy_orders: {buy_orders:,}")
+    print(f"sell_orders: {sell_orders:,}")
     print(f"sde_loaded_at: {sde_loaded or 'MISSING'}")
     print(f"worker_status: {worker_status or 'UNKNOWN'}")
     print(f"latest_market_snapshot: {latest_market or 'MISSING'}")
@@ -43,13 +59,20 @@ def main() -> int:
     universe_ready = all(
         counts[key] > 0 for key in ("items", "regions", "systems", "stargates")
     )
-    market_ready = counts["orders"] > 0 and latest_market is not None
+    market_ready = (
+        counts["orders"] > 0
+        and latest_market is not None
+        and market_regions > 0
+        and market_types > 0
+        and buy_orders > 0
+        and sell_orders > 0
+    )
 
     if not universe_ready:
         print("FAIL: SDE universe is incomplete.")
         return 1
     if not market_ready:
-        print("FAIL: market snapshots are empty.")
+        print("FAIL: market snapshots are incomplete.")
         return 2
 
     if latest_market.tzinfo is None:
