@@ -70,7 +70,7 @@ The Streamlit application bootstraps the SDE only when the persistent database i
 
 GitHub Actions provides two scheduled jobs:
 
-- **Market Worker:** runs every 15 minutes and refreshes at most one stale region per run by default.
+- **Market Worker:** runs every 15 minutes and automatically schedules up to two due regions per run. Each region receives an adaptive refresh interval based on its latest order count: higher-volume regions are refreshed more frequently, while low-volume regions can wait longer.
 - **SDE Refresh:** runs weekly and force-refreshes the official SDE.
 
 Both workflows require the repository secrets `DATABASE_URL` and `ESI_USER_AGENT`.
@@ -107,7 +107,7 @@ The resulting **ISK/hour is an estimate**, not a realized performance metric. Fu
 
 Market collection fetches every page before replacing the previous region snapshot. This prevents stale orders from remaining in the database after they disappear from the latest complete ESI snapshot.
 
-The worker selects overdue regions first, then applies the configured hub priority. This keeps the expensive ESI collection incremental rather than loading every region during application startup.
+The worker calculates a target refresh interval from the latest snapshot order count, bounded by configurable minimum and maximum intervals. Selection is based on how overdue each region is, with configured hub priority used as a tie-breaker. This makes market freshness automatic instead of requiring manual regional updates while keeping ESI collection incremental.
 
 ## Next milestones
 
