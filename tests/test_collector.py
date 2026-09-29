@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import MarketOrder
-from arbitrageve.market.collector import collect_region
+from arbitrageve.market.collector import collect_region, collect_regions
 
 
 class FakeMarketClient:
@@ -137,3 +137,28 @@ def test_collect_region_preserves_order_fields_and_parses_issued_timestamp():
     assert order.is_buy_order is False
     assert order.duration == 90
     assert order.issued == datetime(2026, 9, 28, 12, 0, tzinfo=UTC).replace(tzinfo=None)
+
+
+def test_collect_regions_deduplicates_region_ids_and_collects_each():
+    session = _session()
+
+    class RegionAwareFakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def get_orders(self, region_id, page=1):
+            self.calls.append((region_id, page))
+            return [_order(region_id, price=5)], 1
+
+    client = RegionAwareFakeClient()
+    results = collect_regions(
+        session,
+        [10000002, 10000043, 10000002],
+        client=client,
+    )
+
+    assert results == {10000002: 1, 10000043: 1}
+    assert client.calls == [
+        (10000002, 1),
+        (10000043, 1),
+    ]
