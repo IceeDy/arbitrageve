@@ -339,74 +339,136 @@ else:
                         f"**Snapshot:** {selected.get('market_age_minutes', 0):.1f} min"
                     )
 
-            with st.expander("📖 Simulação da execução no order book", expanded=True):
-                st.caption(
-                    "Mostra exatamente quais ordens seriam consumidas para executar a quantidade "
-                    "selecionada. Os valores são uma fotografia do snapshot do mercado."
-                )
-                e1, e2, e3, e4 = st.columns(4)
-                e1.metric("Ordens de compra", selected.get("buy_levels_used", 0))
-                e2.metric("Ordens de venda", selected.get("sell_levels_used", 0))
-                e3.metric(
-                    "Preço marginal compra",
-                    f'{selected.get("buy_marginal_price", 0):,.2f} ISK',
-                )
-                e4.metric(
-                    "Preço marginal venda",
-                    f'{selected.get("sell_marginal_price", 0):,.2f} ISK',
-                )
+            st.markdown('<div class="eve-section">Order book / execution</div>', unsafe_allow_html=True)
+            st.caption(
+                "Profundidade executável do snapshot atual. A simulação consome as ordens "
+                "na sequência necessária para executar a quantidade calculada."
+            )
 
-                buy_rows = [
+            buy_levels = selected.get("buy_levels", [])
+            sell_levels = selected.get("sell_levels", [])
+            e1, e2, e3, e4 = st.columns(4)
+            e1.metric("Buy levels", selected.get("buy_levels_used", 0))
+            e2.metric("Sell levels", selected.get("sell_levels_used", 0))
+            e3.metric(
+                "Marginal buy",
+                f'{selected.get("buy_marginal_price", 0):,.2f} ISK',
+            )
+            e4.metric(
+                "Marginal sell",
+                f'{selected.get("sell_marginal_price", 0):,.2f} ISK',
+            )
+
+            depth_rows = []
+            cumulative_buy = 0
+            for level in sorted(buy_levels, key=lambda item: item["price"], reverse=True):
+                cumulative_buy += level["quantity"]
+                depth_rows.append(
                     {
-                        "Order ID": level["order_id"],
-                        "Preço": level["price"],
-                        "Quantidade": level["quantity"],
-                        "Total": level["value"],
+                        "Price": level["price"],
+                        "Buy depth": cumulative_buy,
+                        "Sell depth": None,
                     }
-                    for level in selected.get("buy_levels", [])
-                ]
-                sell_rows = [
-                    {
-                        "Order ID": level["order_id"],
-                        "Preço": level["price"],
-                        "Quantidade": level["quantity"],
-                        "Total": level["value"],
-                    }
-                    for level in selected.get("sell_levels", [])
-                ]
-
-                buy_col, sell_col = st.columns(2)
-                with buy_col:
-                    st.markdown("**🟦 Compra — ordens consumidas**")
-                    st.dataframe(
-                        buy_rows,
-                        width="stretch",
-                        hide_index=True,
-                        column_config={
-                            "Preço": st.column_config.NumberColumn(format="%.2f ISK"),
-                            "Quantidade": st.column_config.NumberColumn(format="%d"),
-                            "Total": st.column_config.NumberColumn(format="%,.0f ISK"),
-                        },
-                    )
-                with sell_col:
-                    st.markdown("**🟩 Venda — ordens consumidas**")
-                    st.dataframe(
-                        sell_rows,
-                        width="stretch",
-                        hide_index=True,
-                        column_config={
-                            "Preço": st.column_config.NumberColumn(format="%.2f ISK"),
-                            "Quantidade": st.column_config.NumberColumn(format="%d"),
-                            "Total": st.column_config.NumberColumn(format="%,.0f ISK"),
-                        },
-                    )
-
-                st.caption(
-                    f'Execução: {selected["quantity"]:,} unidades · '
-                    f'compra média {selected["avg_buy_price"]:,.2f} ISK · '
-                    f'venda média {selected["avg_sell_price"]:,.2f} ISK · '
-                    f'lucro líquido {selected["net_profit"]:,.0f} ISK'
                 )
+            cumulative_sell = 0
+            for level in sorted(sell_levels, key=lambda item: item["price"]):
+                cumulative_sell += level["quantity"]
+                depth_rows.append(
+                    {
+                        "Price": level["price"],
+                        "Buy depth": None,
+                        "Sell depth": cumulative_sell,
+                    }
+                )
+            depth_rows.sort(key=lambda row: row["Price"])
+
+            if depth_rows:
+                import plotly.graph_objects as go
+
+                depth_figure = go.Figure()
+                buy_depth = [row for row in depth_rows if row["Buy depth"] is not None]
+                sell_depth = [row for row in depth_rows if row["Sell depth"] is not None]
+                if buy_depth:
+                    depth_figure.add_trace(
+                        go.Scatter(
+                            x=[row["Price"] for row in buy_depth],
+                            y=[row["Buy depth"] for row in buy_depth],
+                            mode="lines+markers",
+                            name="Buy depth",
+                            line_shape="hv",
+                        )
+                    )
+                if sell_depth:
+                    depth_figure.add_trace(
+                        go.Scatter(
+                            x=[row["Price"] for row in sell_depth],
+                            y=[row["Sell depth"] for row in sell_depth],
+                            mode="lines+markers",
+                            name="Sell depth",
+                            line_shape="hv",
+                        )
+                    )
+                depth_figure.update_layout(
+                    height=300,
+                    margin={"l": 10, "r": 10, "t": 10, "b": 10},
+                    xaxis_title="ISK / unit",
+                    yaxis_title="Cumulative units",
+                    hovermode="x unified",
+                    legend={"orientation": "h", "y": 1.08},
+                )
+                st.plotly_chart(depth_figure, use_container_width=True)
+
+            buy_rows = [
+                {
+                    "Order ID": level["order_id"],
+                    "Price": level["price"],
+                    "Quantity": level["quantity"],
+                    "Total": level["value"],
+                }
+                for level in buy_levels
+            ]
+            sell_rows = [
+                {
+                    "Order ID": level["order_id"],
+                    "Price": level["price"],
+                    "Quantity": level["quantity"],
+                    "Total": level["value"],
+                }
+                for level in sell_levels
+            ]
+
+            buy_col, sell_col = st.columns(2)
+            with buy_col:
+                st.markdown("**BUY ORDERS · consumed**")
+                st.dataframe(
+                    buy_rows,
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "Price": st.column_config.NumberColumn(format="%.2f ISK"),
+                        "Quantity": st.column_config.NumberColumn(format="%d"),
+                        "Total": st.column_config.NumberColumn(format="%,.0f ISK"),
+                    },
+                )
+            with sell_col:
+                st.markdown("**SELL ORDERS · consumed**")
+                st.dataframe(
+                    sell_rows,
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "Price": st.column_config.NumberColumn(format="%.2f ISK"),
+                        "Quantity": st.column_config.NumberColumn(format="%d"),
+                        "Total": st.column_config.NumberColumn(format="%,.0f ISK"),
+                    },
+                )
+
+            st.caption(
+                f'Execution: {selected["quantity"]:,} units · '
+                f'buy avg {selected["avg_buy_price"]:,.2f} ISK · '
+                f'sell avg {selected["avg_sell_price"]:,.2f} ISK · '
+                f'net profit {selected["net_profit"]:,.0f} ISK'
+            )
 
             st.subheader("Market watchlist")
 
