@@ -6,7 +6,7 @@ from sqlalchemy import and_, case, func, select
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
 from arbitrageve.market.execution import simulate_order_book_execution
-from arbitrageve.market.metrics import ExecutionProfile, estimate_isk_per_hour
+from arbitrageve.market.metrics import ExecutionProfile, estimate_isk_per_hour, estimate_minutes
 from arbitrageve.services.risk import RiskProfile, analyze_route, route_allowed
 
 
@@ -496,12 +496,7 @@ def find_opportunities(
                 gross_profit = execution["gross_profit"]
                 net_profit = execution["net_profit"]
                 roi = net_profit / spent if spent else 0.0
-                estimated_minutes = (
-                    execution_profile.fixed_minutes
-                    + jumps * execution_profile.minutes_per_jump
-                )
-                if execution_profile.return_trip:
-                    estimated_minutes *= 2
+                estimated_minutes = estimate_minutes(jumps, execution_profile)
                 isk_per_hour = estimate_isk_per_hour(net_profit, jumps, execution_profile)
                 capital_efficiency = net_profit / spent if spent else 0.0
                 avg_buy = spent / quantity
