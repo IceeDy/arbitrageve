@@ -34,3 +34,6 @@ jobs:
 
       - name: Refresh stale market region
         run: python scripts/market_worker.py
+
+      - name: Validate persistent market data
+        run: python scripts/healthcheck.py
