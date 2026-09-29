@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from arbitrageve.config.settings import settings
 from arbitrageve.db.database import Base
-from arbitrageve.db.models import MarketOrder, Region
+from arbitrageve.db.models import AppState, MarketOrder, Region
 from arbitrageve.services.market_worker import select_regions_for_refresh
 
 
@@ -106,3 +106,26 @@ def test_select_regions_keeps_fresh_regions_after_overdue_regions():
         settings.market_refresh_minutes = old_refresh
 
     assert [region.name for region in selected] == ["Old"]
+
+
+def test_collect_priority_regions_persists_worker_health(monkeypatch):
+    from arbitrageve.services import market_worker
+
+    session = _session()
+    session.add(Region(region_id=10000002, name="The Forge"))
+    session.commit()
+
+    monkeypatch.setattr(
+        market_worker,
+        "collect_region",
+        lambda session, region_id: 123,
+    )
+
+    result = market_worker.collect_priority_regions(session, limit=1)
+
+    assert result == {10000002: 123}
+    assert session.get(AppState, "market_worker.status").value == "OK"
+    assert session.get(AppState, "market_worker.last_regions").value == "10000002"
+    assert session.get(AppState, "market_worker.last_started_at").value
+    assert session.get(AppState, "market_worker.last_finished_at").value
+    assert session.get(AppState, "market_worker.last_error").value == ""
