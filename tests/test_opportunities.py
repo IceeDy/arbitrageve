@@ -825,15 +825,13 @@ def test_global_sort_by_isk_per_hour_uses_route_aware_execution_time():
             is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
         ),
         SolarSystem(
-            system_id=1, name="Source", security_status=1.0, security_class="highsec"
+            system_id=1, name="Source", security_status=1.0
         ),
         SolarSystem(
-            system_id=2, name="Fast Destination", security_status=1.0,
-            security_class="highsec"
+            system_id=2, name="Fast Destination", security_status=1.0
         ),
         SolarSystem(
-            system_id=3, name="Slow Destination", security_status=1.0,
-            security_class="highsec"
+            system_id=3, name="Slow Destination", security_status=1.0
         ),
     ])
     session.commit()
