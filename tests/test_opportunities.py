@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import Item, MarketOrder
-from arbitrageve.services.opportunities import calculate_operational_score, find_opportunities
+from arbitrageve.services.opportunities import (\n    calculate_operational_score,\n    find_opportunities,\n)
 
 FRESH_COLLECTED_AT = datetime.now(UTC).replace(tzinfo=None)
 
