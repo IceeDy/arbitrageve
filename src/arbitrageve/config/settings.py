@@ -13,3 +13,5 @@ class Settings(BaseSettings):
     market_refresh_minutes: int = 30
     market_max_regions_per_run: int = 1
     market_region_priority: str = "The Forge,Domain,Sinq Laison,Heimatar,Metropolis,Essence,Tash-Murkon,Everyshore"
+
+settings = Settings()
