@@ -20,15 +20,14 @@ from arbitrageve.sde.routes import LocalRouteClient
 from arbitrageve.services.opportunities import find_opportunities
 from arbitrageve.services.risk import RiskProfile
 
-st.set_page_config(page_title="ArbitrageVE", page_icon="📈", layout="wide")
+st.set_page_config(page_title="ArbitragEVE", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
 init_db()
 
-st.title("ArbitrageVE")
-st.caption("EVE Online cross-region market arbitrage scanner • roteamento local via SDE")
-# Scanner diagnostics API: 2026-09-28
+st.title("ArbitragEVE")
+st.caption("Scanner de arbitragem entre regiões — encontre operações executáveis, veja o risco e decida onde alocar seu ISK.")
 
 with st.sidebar:
-    st.header("Scanner")
+    st.header("Operação")
     capital = st.number_input("Capital (ISK)", min_value=0.0, value=settings.capital_isk, step=1_000_000.0)
     cargo = st.number_input("Cargo (m³)", min_value=0.0, value=settings.cargo_m3, step=10.0)
     source = st.selectbox("Comprar em", options=list(REGIONS), format_func=lambda x: REGIONS[x])
@@ -39,8 +38,15 @@ with st.sidebar:
         format_func=lambda x: REGIONS[x],
     )
     min_roi = st.slider("ROI líquido mínimo", 0.0, 1.0, 0.05, 0.01)
-    min_profit = st.number_input("Lucro líquido mínimo (ISK)", min_value=0.0, value=100_000.0, step=100_000.0)
-    max_market_age = st.number_input("Idade máxima do snapshot (min)", min_value=0.0, value=60.0, step=5.0)
+    min_profit = st.number_input("Lucro líquido mínimo", min_value=0.0, value=100_000.0, step=100_000.0)
+    max_market_age = st.number_input("Snapshot máximo (min)", min_value=0.0, value=60.0, step=5.0)
+
+    st.divider()
+    st.subheader("Filtros de execução")
+    min_quantity = st.number_input("Quantidade mínima", min_value=1, value=1, step=1)
+    min_profit_unit = st.number_input("Lucro/unid. mínimo", min_value=0.0, value=0.0, step=100.0)
+    max_capital = st.number_input("Capital máximo por operação", min_value=0.0, value=0.0, step=1_000_000.0, help="0 = sem limite")
+    require_scalable = st.checkbox("Somente operações escaláveis", value=False)
 
     st.divider()
     st.subheader("Rota")
@@ -55,7 +61,7 @@ with st.sidebar:
     max_jumps = st.number_input("Máximo de jumps", min_value=0, value=30, step=1)
 
     st.divider()
-    st.subheader("Execução")
+    st.subheader("Rota e tempo")
     fixed_minutes = st.number_input("Tempo fixo por operação (min)", min_value=0.0, value=10.0, step=1.0)
     minutes_per_jump = st.number_input("Tempo por jump (min)", min_value=0.0, value=2.0, step=0.5)
     return_trip = st.checkbox("Considerar viagem de retorno", value=False)
@@ -177,8 +183,13 @@ else:
         filtered = [
             item for item in opportunities
             if item.get("execution_class", "Executável") in execution_filter
+            and item.get("quantity", 0) >= min_quantity
+            and item.get("profit_per_unit", 0.0) >= min_profit_unit
+            and (max_capital <= 0 or item.get("capital_required", 0.0) <= max_capital)
+            and (not require_scalable or item.get("scalable", False))
         ]
-        st.metric("Oportunidades", len(filtered), delta=f"{len(opportunities) - len(filtered)} ocultas pelo filtro" if len(filtered) != len(opportunities) else None)
+        st.subheader("Oportunidades")
+        st.caption(f"{len(filtered)} operações atendem aos filtros atuais · {len(opportunities) - len(filtered)} ocultadas")
 
         if not filtered:
             st.info("Nenhuma oportunidade corresponde ao filtro de execução selecionado.")
@@ -186,10 +197,11 @@ else:
             total_required = sum(item["capital_required"] for item in filtered)
             scalable_count = sum(item.get("scalable", False) for item in filtered)
             speculative_count = sum(item.get("execution_class") == "Especulativa" for item in filtered)
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Capital necessário", f"{total_required:,.0f} ISK")
-            c2.metric("Escaláveis", scalable_count)
-            c3.metric("Especulativas", speculative_count)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Operações", len(filtered))
+            c2.metric("Capital total", f"{total_required:,.0f} ISK")
+            c3.metric("Escaláveis", scalable_count)
+            c4.metric("Especulativas", speculative_count)
 
             rows = [
                 {
