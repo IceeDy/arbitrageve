@@ -436,13 +436,12 @@ def find_opportunities(
                     diagnostics["route_systems_found"] += len(systems)
                     diagnostics["route_systems_missing"] += missing_systems
 
-                # A partial route cannot support a trustworthy security audit.
-                # Reject it rather than silently classifying only the systems
-                # that happened to be present in the database.
-                if missing_systems and route_client is not None:
-                    if diagnostics is not None:
-                        diagnostics["rejected_unknown_route"] += 1
-                    continue
+                # A route returned by the route client can still be
+                # executable even when the local SDE does not contain all
+                # systems. Keep the opportunity, but let the audit mark the
+                # route as unverified instead of inventing security data.
+                if missing_systems and diagnostics is not None:
+                    diagnostics["rejected_unknown_route"] += 1
 
                 risk = analyze_route(systems, jumps)
                 risk["jumps"] = jumps
