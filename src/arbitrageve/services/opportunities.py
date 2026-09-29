@@ -143,6 +143,20 @@ def _execution_class(quantity: int, book_capacity: int, coverage: float) -> str:
 
 
 
+def calculate_operational_score(opportunity: dict) -> dict[str, float]:
+    execution_points = {'Escalável': 100.0, 'Executável': 70.0, 'Especulativa': 30.0}
+    liquidity_points = {'Alta': 100.0, 'Média': 75.0, 'Baixa': 45.0, 'Muito baixa': 15.0}
+    execution = execution_points.get(opportunity.get('execution_class'), 50.0)
+    liquidity = liquidity_points.get(opportunity.get('liquidity_class'), 40.0)
+    roi = max(0.0, min(float(opportunity.get('roi', 0.0)) / 0.50, 1.0)) * 100.0
+    isk_hour = max(0.0, min(float(opportunity.get('isk_per_hour', 0.0)) / 10000000, 1.0)) * 100.0
+    coverage = max(0.0, min(float(opportunity.get('book_coverage', 1.0)), 1.0))
+    depth = (1.0 - coverage) * 100.0
+    risk = max(0.0, min(float(opportunity.get('risk_score', 0.0)), 1.0))
+    route = max(0.0, min(1.0 - risk, 1.0)) * 100.0
+    score = execution * 0.25 + liquidity * 0.20 + roi * 0.15 + isk_hour * 0.20 + depth * 0.10 + route * 0.10
+    return {'operational_score': round(score, 2), 'score_execution': round(execution, 2), 'score_liquidity': round(liquidity, 2), 'score_roi': round(roi, 2), 'score_isk_hour': round(isk_hour, 2), 'score_depth': round(depth, 2), 'score_route': round(route, 2)}
+
 def find_opportunities(
     session,
     source_region_id,
@@ -427,6 +441,7 @@ def find_opportunities(
                     "source_region_id": source_region_id,
                     "destination_region_id": destination_region_id,
                 })
+                results[-1].update(calculate_operational_score(results[-1]))
 
     results = sorted(results, key=lambda x: x["capital_efficiency"] if sort_by == "capital_efficiency" else x[sort_by], reverse=True)[:limit]
     if diagnostics is not None:
