@@ -6,11 +6,9 @@ from sqlalchemy.orm import sessionmaker
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import MarketOrder
 from arbitrageve.market.collector import collect_region, collect_regions
-
-
 from tests.db import create_test_engine
-class FakeMarketClient:
-    def __init__(self, pages):
+
+def __init__(self, pages):
         self.pages = pages
         self.calls = []
 
