@@ -282,6 +282,7 @@ else:
                     "Cobertura book": item["book_coverage"],
                     "Book mínimo": item["book_capacity"],
                     "Jumps": item["jumps"],
+                    "Tempo operacional (min)": item.get("estimated_minutes", 0.0),
                     "Segurança mín.": item["min_security_status"],
                     "Low-sec": item["lowsec_systems"],
                     "Null-sec": item["nullsec_systems"],
@@ -330,6 +331,10 @@ else:
                 with right:
                     st.markdown(
                         f"**Rota:** {selected['jumps']} jumps · {selected['route_class']}"
+                    )
+                    st.markdown(
+                        f"**Tempo operacional:** {selected.get('estimated_minutes', 0.0):,.1f} min · "
+                        f"**Retorno:** {'sim' if return_trip else 'não'}"
                     )
                     st.markdown(
                         f"**Execução:** {selected.get('execution_class', 'Executável')} · "
@@ -436,7 +441,7 @@ else:
                 r1, r2 = st.columns(2)
                 r1.metric("Jumps", selected.get("jumps", 0))
                 r2.metric("Min security", f'{selected.get("min_security_status", 0.0):.2f}')
-                st.metric("Estimated time", f'{selected.get("estimated_minutes", 0.0):.0f} min')
+                st.metric("Tempo operacional", f'{selected.get("estimated_minutes", 0.0):.1f} min')
                 st.metric("High-sec", selected.get("highsec_systems", 0))
                 st.metric("Low-sec", selected.get("lowsec_systems", 0))
                 st.metric("Null-sec", selected.get("nullsec_systems", 0))
