@@ -8,6 +8,8 @@ from arbitrageve.db.models import Item, MarketOrder
 from arbitrageve.market.execution import simulate_order_book_execution
 from arbitrageve.services.opportunities import (
     calculate_operational_score,
+    discover_global_candidates,
+    find_global_opportunities,
     find_opportunities,
 )
 
@@ -495,3 +497,87 @@ def test_opportunity_exposes_execution_levels_and_marginal_prices():
     assert opportunity["sell_marginal_price"] == 140
     assert [level["quantity"] for level in opportunity["buy_levels"]] == [100, 50]
     assert [level["quantity"] for level in opportunity["sell_levels"]] == [100, 50]
+
+
+def test_discover_global_candidates_finds_cross_region_pairs():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add(Item(type_id=100, name="Global Item", volume=1.0))
+    session.add_all([
+        MarketOrder(
+            order_id=1001, region_id=10000002, system_id=1, location_id=10,
+            type_id=100, price=100, volume_remain=50, volume_total=50,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=1002, region_id=10000043, system_id=2, location_id=20,
+            type_id=100, price=150, volume_remain=75, volume_total=75,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=1003, region_id=10000032, system_id=3, location_id=30,
+            type_id=100, price=140, volume_remain=20, volume_total=20,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+    ])
+    session.commit()
+
+    candidates = discover_global_candidates(
+        session, min_roi=0.0, max_candidates=10
+    )
+
+    assert len(candidates) == 2
+    assert all(row["type_id"] == 100 for row in candidates)
+    assert {
+        (row["source_region_id"], row["destination_region_id"])
+        for row in candidates
+    } == {
+        (10000002, 10000043),
+        (10000002, 10000032),
+    }
+
+
+def test_find_global_opportunities_uses_global_candidate_discovery():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add(Item(type_id=101, name="Global Execution", volume=1.0))
+    session.add_all([
+        MarketOrder(
+            order_id=1011, region_id=10000002, system_id=1, location_id=10,
+            type_id=101, price=100, volume_remain=10, volume_total=10,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=1012, region_id=10000043, system_id=2, location_id=20,
+            type_id=101, price=150, volume_remain=10, volume_total=10,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+    ])
+    session.commit()
+
+    class DirectRoute:
+        def route(self, origin, destination, **kwargs):
+            return [origin, destination]
+
+    diagnostics = {}
+    result = find_global_opportunities(
+        session,
+        capital_isk=2_000,
+        cargo_m3=10,
+        min_roi=0.0,
+        min_profit_isk=0,
+        route_client=DirectRoute(),
+        diagnostics=diagnostics,
+        max_candidates=10,
+    )
+
+    assert len(result) == 1
+    assert result[0]["name"] == "Global Execution"
+    assert result[0]["source_region_id"] == 10000002
+    assert result[0]["destination_region_id"] == 10000043
+    assert diagnostics["global_candidates"] == 1
+    assert diagnostics["detailed_scans"] == 1

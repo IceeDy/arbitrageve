@@ -1,7 +1,7 @@
 import math
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
@@ -177,6 +177,7 @@ def find_opportunities(
     sort_by="net_profit",
     max_candidate_lanes=4,
     max_market_age_minutes=60.0,
+    type_ids=None,
 ):
     """Find cross-region opportunities across multiple station lanes."""
     costs = costs or TradeCosts()
@@ -193,11 +194,13 @@ def find_opportunities(
     if max_market_age_minutes < 0:
         raise ValueError("max_market_age_minutes must be non-negative")
 
-    item_ids = session.execute(
-        select(MarketOrder.type_id)
-        .where(MarketOrder.region_id.in_([source_region_id, destination_region_id]))
-        .distinct()
-    ).scalars().all()
+    item_query = select(MarketOrder.type_id).where(
+        MarketOrder.region_id.in_([source_region_id, destination_region_id])
+    )
+    if type_ids is not None:
+        type_ids = {int(type_id) for type_id in type_ids}
+        item_query = item_query.where(MarketOrder.type_id.in_(type_ids))
+    item_ids = session.execute(item_query.distinct()).scalars().all()
 
     results = []
     if diagnostics is not None:
@@ -466,3 +469,160 @@ def find_opportunities(
     if diagnostics is not None:
         diagnostics["final_opportunities"] = len(results)
     return results
+
+
+def discover_global_candidates(
+    session,
+    *,
+    min_roi: float = 0.05,
+    costs: TradeCosts | None = None,
+    max_candidates: int = 200,
+) -> list[dict]:
+    """Discover promising cross-region pairs using cheap aggregate prices."""
+    costs = costs or TradeCosts()
+    costs.validate()
+    if min_roi < 0:
+        raise ValueError("min_roi must be non-negative")
+    if max_candidates < 1:
+        raise ValueError("max_candidates must be positive")
+
+    sells = (
+        select(
+            MarketOrder.region_id.label("source_region_id"),
+            MarketOrder.type_id.label("type_id"),
+            func.min(MarketOrder.price).label("buy_price"),
+            func.sum(MarketOrder.volume_remain).label("source_volume"),
+        )
+        .where(
+            MarketOrder.is_buy_order.is_(False),
+            MarketOrder.volume_remain > 0,
+        )
+        .group_by(MarketOrder.region_id, MarketOrder.type_id)
+        .subquery()
+    )
+    buys = (
+        select(
+            MarketOrder.region_id.label("destination_region_id"),
+            MarketOrder.type_id.label("type_id"),
+            func.max(MarketOrder.price).label("sell_price"),
+            func.sum(MarketOrder.volume_remain).label("destination_volume"),
+        )
+        .where(
+            MarketOrder.is_buy_order.is_(True),
+            MarketOrder.volume_remain > 0,
+        )
+        .group_by(MarketOrder.region_id, MarketOrder.type_id)
+        .subquery()
+    )
+    spread = buys.c.sell_price - sells.c.buy_price
+    net_per_unit = (
+        buys.c.sell_price * (1 - costs.sales_tax_rate - costs.broker_fee_rate)
+        - sells.c.buy_price
+    )
+    roi = net_per_unit / sells.c.buy_price
+
+    rows = session.execute(
+        select(
+            sells.c.type_id,
+            sells.c.source_region_id,
+            buys.c.destination_region_id,
+            sells.c.buy_price,
+            buys.c.sell_price,
+            sells.c.source_volume,
+            buys.c.destination_volume,
+            spread.label("spread_isk"),
+            roi.label("optimistic_roi"),
+        )
+        .select_from(
+            sells.join(
+                buys,
+                and_(
+                    buys.c.type_id == sells.c.type_id,
+                    buys.c.destination_region_id != sells.c.source_region_id,
+                ),
+            )
+        )
+        .where(
+            sells.c.buy_price > 0,
+            buys.c.sell_price > sells.c.buy_price,
+            roi >= min_roi,
+        )
+        .order_by(roi.desc(), spread.desc())
+        .limit(max_candidates)
+    ).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def find_global_opportunities(
+    session,
+    capital_isk,
+    cargo_m3,
+    *,
+    min_roi=0.05,
+    min_profit_isk=100_000,
+    limit=100,
+    costs=None,
+    route_client=None,
+    route_preference="Shorter",
+    security_penalty=50,
+    risk_profile=None,
+    execution_profile=None,
+    diagnostics=None,
+    sort_by="net_profit",
+    max_candidate_lanes=4,
+    max_market_age_minutes=60.0,
+    max_candidates=200,
+):
+    """Find executable arbitrage across the loaded market universe."""
+    costs = costs or TradeCosts()
+    candidates = discover_global_candidates(
+        session,
+        min_roi=min_roi,
+        costs=costs,
+        max_candidates=max_candidates,
+    )
+    if diagnostics is not None:
+        diagnostics.clear()
+        diagnostics.update({
+            "global_candidates": len(candidates),
+            "candidate_region_pairs": len({
+                (row["source_region_id"], row["destination_region_id"])
+                for row in candidates
+            }),
+            "detailed_scans": 0,
+            "final_opportunities": 0,
+        })
+
+    results = []
+    for candidate in candidates:
+        detailed = find_opportunities(
+            session,
+            candidate["source_region_id"],
+            candidate["destination_region_id"],
+            capital_isk,
+            cargo_m3,
+            min_roi=min_roi,
+            min_profit_isk=min_profit_isk,
+            limit=limit,
+            costs=costs,
+            route_client=route_client,
+            route_preference=route_preference,
+            security_penalty=security_penalty,
+            risk_profile=risk_profile,
+            execution_profile=execution_profile,
+            sort_by=sort_by,
+            max_candidate_lanes=max_candidate_lanes,
+            max_market_age_minutes=max_market_age_minutes,
+            type_ids={candidate["type_id"]},
+        )
+        if diagnostics is not None:
+            diagnostics["detailed_scans"] += 1
+        results.extend(detailed)
+
+    results.sort(
+        key=lambda row: row.get(sort_by, row.get("net_profit", 0)),
+        reverse=True,
+    )
+    if diagnostics is not None:
+        diagnostics["final_opportunities"] = min(len(results), limit)
+    return results[:limit]
