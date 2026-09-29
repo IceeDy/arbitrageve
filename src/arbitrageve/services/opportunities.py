@@ -6,7 +6,11 @@ from sqlalchemy import and_, case, func, select
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
 from arbitrageve.market.execution import simulate_order_book_execution
-from arbitrageve.market.metrics import ExecutionProfile, estimate_isk_per_hour, estimate_minutes
+from arbitrageve.market.metrics import (
+    ExecutionProfile,
+    estimate_isk_per_hour,
+    estimate_minutes,
+)
 from arbitrageve.services.risk import RiskProfile, analyze_route, route_allowed
 
 
