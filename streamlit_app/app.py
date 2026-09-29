@@ -17,7 +17,7 @@ from arbitrageve.db.models import Region, Stargate
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
 from arbitrageve.sde.routes import LocalRouteClient
-from arbitrageve.services.opportunities import find_opportunities
+from arbitrageve.services.opportunities import find_global_opportunities, find_opportunities
 from arbitrageve.services.risk import RiskProfile
 
 st.set_page_config(page_title="ArbitragEVE", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
@@ -37,18 +37,34 @@ with st.sidebar:
         }
     market_regions = db_regions or REGIONS
     region_ids = list(market_regions)
-
-    source = st.selectbox(
-        "Comprar em",
-        options=region_ids,
-        format_func=lambda region_id: market_regions[region_id],
+    scan_scope = st.radio(
+        "Escopo do scanner",
+        ["Universo inteiro", "Entre regiões"],
+        horizontal=True,
+        help="Universo inteiro faz uma descoberta global limitada antes da análise detalhada.",
     )
-    destination_options = [region_id for region_id in region_ids if region_id != source]
-    destination = st.selectbox(
-        "Vender em",
-        options=destination_options,
-        format_func=lambda region_id: market_regions[region_id],
-    )
+    source = destination = None
+    if scan_scope == "Entre regiões":
+        source = st.selectbox(
+            "Comprar em",
+            options=region_ids,
+            format_func=lambda region_id: market_regions[region_id],
+        )
+        destination_options = [region_id for region_id in region_ids if region_id != source]
+        destination = st.selectbox(
+            "Vender em",
+            options=destination_options,
+            format_func=lambda region_id: market_regions[region_id],
+        )
+    else:
+        max_global_candidates = st.number_input(
+            "Candidatos globais detalhados",
+            min_value=10,
+            max_value=2000,
+            value=200,
+            step=10,
+            help="Limita quantos pares item/região entram na análise pesada de order book e rota.",
+        )
     min_roi = st.slider("ROI líquido mínimo", 0.0, 1.0, 0.05, 0.01)
     min_profit = st.number_input("Lucro líquido mínimo", min_value=0.0, value=100_000.0, step=100_000.0)
     max_market_age = st.number_input("Snapshot máximo (min)", min_value=0.0, value=60.0, step=5.0)
@@ -102,7 +118,7 @@ with st.sidebar:
     transport_m3_jump = st.number_input("Transporte (ISK/m³/jump)", min_value=0.0, value=0.0, step=10.0)
     safety_margin = st.number_input("Margem de segurança sobre custos (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.5) / 100
 
-if source == destination:
+if scan_scope == "Entre regiões" and source == destination:
     st.warning("Escolha regiões diferentes.")
 else:
     costs = TradeCosts(
@@ -134,24 +150,44 @@ else:
             )
             st.stop()
 
-        opportunities = find_opportunities(
-            session,
-            source,
-            destination,
-            capital,
-            cargo,
-            min_roi,
-            min_profit,
-            costs=costs,
-            route_client=LocalRouteClient(session),
-            route_preference=route_preference,
-            security_penalty=security_penalty,
-            risk_profile=risk_profile,
-            execution_profile=execution_profile,
-            diagnostics=diagnostics,
-            sort_by=sort_by,
-            max_market_age_minutes=max_market_age,
-        )
+        route_client = LocalRouteClient(session)
+        if scan_scope == "Universo inteiro":
+            opportunities = find_global_opportunities(
+                session,
+                capital,
+                cargo,
+                min_roi=min_roi,
+                min_profit_isk=min_profit,
+                costs=costs,
+                route_client=route_client,
+                route_preference=route_preference,
+                security_penalty=security_penalty,
+                risk_profile=risk_profile,
+                execution_profile=execution_profile,
+                diagnostics=diagnostics,
+                sort_by=sort_by,
+                max_market_age_minutes=max_market_age,
+                max_candidates=max_global_candidates,
+            )
+        else:
+            opportunities = find_opportunities(
+                session,
+                source,
+                destination,
+                capital,
+                cargo,
+                min_roi,
+                min_profit,
+                costs=costs,
+                route_client=route_client,
+                route_preference=route_preference,
+                security_penalty=security_penalty,
+                risk_profile=risk_profile,
+                execution_profile=execution_profile,
+                diagnostics=diagnostics,
+                sort_by=sort_by,
+                max_market_age_minutes=max_market_age,
+            )
 
     if not opportunities:
         st.info("Nenhuma oportunidade encontrada.")
