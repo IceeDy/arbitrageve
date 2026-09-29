@@ -71,7 +71,12 @@ def collect_priority_regions(session, limit: int | None = None) -> dict[int, int
         for region in select_regions_for_refresh(session, limit):
             results[region.region_id] = collect_region(session, region.region_id)
         _set_worker_state(session, "market_worker.last_regions", ",".join(map(str, results)))
-        _set_worker_state(session, "market_worker.last_finished_at", datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds"))
+        finished_at = datetime.now(UTC).replace(tzinfo=None)
+        _set_worker_state(
+            session,
+            "market_worker.last_finished_at",
+            finished_at.isoformat(timespec="seconds"),
+        )
         _set_worker_state(session, "market_worker.status", "OK")
         _set_worker_state(session, "market_worker.last_error", "")
         return results
