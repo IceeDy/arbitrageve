@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import Item, MarketOrder
+from arbitrageve.market.execution import simulate_order_book_execution
 from arbitrageve.services.opportunities import (
     calculate_operational_score,
     find_opportunities,
@@ -392,3 +393,105 @@ def test_operational_score_is_transparent_and_rewards_execution_quality():
     assert scalable["operational_score"] > speculative["operational_score"]
     assert scalable["score_execution"] == 100.0
     assert scalable["score_liquidity"] == 100.0
+
+
+def test_order_book_execution_simulation_reports_each_consumed_level():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add(Item(type_id=44, name="Execution Test", volume=1.0))
+    session.add_all([
+        MarketOrder(
+            order_id=81, region_id=10000002, system_id=1, location_id=10,
+            type_id=44, price=100, volume_remain=100, volume_total=100,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=82, region_id=10000002, system_id=1, location_id=10,
+            type_id=44, price=110, volume_remain=50, volume_total=50,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=83, region_id=10000043, system_id=2, location_id=20,
+            type_id=44, price=160, volume_remain=75, volume_total=75,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=84, region_id=10000043, system_id=2, location_id=20,
+            type_id=44, price=150, volume_remain=75, volume_total=75,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+    ])
+    session.commit()
+
+    from arbitrageve.market.costs import TradeCosts
+
+    source = session.query(MarketOrder).filter_by(
+        region_id=10000002, type_id=44, is_buy_order=False
+    ).order_by(MarketOrder.price.asc()).all()
+    destination = session.query(MarketOrder).filter_by(
+        region_id=10000043, type_id=44, is_buy_order=True
+    ).order_by(MarketOrder.price.desc()).all()
+
+    result = simulate_order_book_execution(
+        source, destination, quantity=125, volume_m3=1.0, jumps=5,
+        costs=TradeCosts(sales_tax_rate=0.10),
+    )
+
+    assert result["quantity"] == 125
+    assert result["buy_cost"] == 12_750
+    assert result["sell_revenue"] == 19_500
+    assert result["avg_buy_price"] == 102.0
+    assert result["avg_sell_price"] == 156.0
+    assert result["buy_levels_used"] == 2
+    assert result["sell_levels_used"] == 2
+    assert result["buy_marginal_price"] == 110
+    assert result["sell_marginal_price"] == 150
+    assert result["sales_tax"] == 1_950
+    assert result["net_profit"] == 4_800
+
+
+def test_opportunity_exposes_execution_levels_and_marginal_prices():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add(Item(type_id=45, name="Execution Opportunity", volume=1.0))
+    session.add_all([
+        MarketOrder(
+            order_id=91, region_id=10000002, system_id=1, location_id=10,
+            type_id=45, price=100, volume_remain=100, volume_total=100,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=92, region_id=10000002, system_id=1, location_id=10,
+            type_id=45, price=120, volume_remain=100, volume_total=100,
+            is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=93, region_id=10000043, system_id=2, location_id=20,
+            type_id=45, price=150, volume_remain=100, volume_total=100,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+        MarketOrder(
+            order_id=94, region_id=10000043, system_id=2, location_id=20,
+            type_id=45, price=140, volume_remain=100, volume_total=100,
+            is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+        ),
+    ])
+    session.commit()
+
+    result = find_opportunities(
+        session, 10000002, 10000043, capital_isk=30_000, cargo_m3=150,
+        min_roi=0.0, min_profit_isk=0,
+    )
+
+    opportunity = result[0]
+    assert opportunity["quantity"] == 150
+    assert opportunity["buy_levels_used"] == 2
+    assert opportunity["sell_levels_used"] == 2
+    assert opportunity["buy_marginal_price"] == 120
+    assert opportunity["sell_marginal_price"] == 140
+    assert [level["quantity"] for level in opportunity["buy_levels"]] == [100, 50]
+    assert [level["quantity"] for level in opportunity["sell_levels"]] == [100, 50]

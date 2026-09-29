@@ -286,6 +286,75 @@ else:
                         f"**Snapshot:** {selected.get('market_age_minutes', 0):.1f} min"
                     )
 
+            with st.expander("📖 Simulação da execução no order book", expanded=True):
+                st.caption(
+                    "Mostra exatamente quais ordens seriam consumidas para executar a quantidade "
+                    "selecionada. Os valores são uma fotografia do snapshot do mercado."
+                )
+                e1, e2, e3, e4 = st.columns(4)
+                e1.metric("Ordens de compra", selected.get("buy_levels_used", 0))
+                e2.metric("Ordens de venda", selected.get("sell_levels_used", 0))
+                e3.metric(
+                    "Preço marginal compra",
+                    f'{selected.get("buy_marginal_price", 0):,.2f} ISK',
+                )
+                e4.metric(
+                    "Preço marginal venda",
+                    f'{selected.get("sell_marginal_price", 0):,.2f} ISK',
+                )
+
+                buy_rows = [
+                    {
+                        "Order ID": level["order_id"],
+                        "Preço": level["price"],
+                        "Quantidade": level["quantity"],
+                        "Total": level["value"],
+                    }
+                    for level in selected.get("buy_levels", [])
+                ]
+                sell_rows = [
+                    {
+                        "Order ID": level["order_id"],
+                        "Preço": level["price"],
+                        "Quantidade": level["quantity"],
+                        "Total": level["value"],
+                    }
+                    for level in selected.get("sell_levels", [])
+                ]
+
+                buy_col, sell_col = st.columns(2)
+                with buy_col:
+                    st.markdown("**🟦 Compra — ordens consumidas**")
+                    st.dataframe(
+                        buy_rows,
+                        width="stretch",
+                        hide_index=True,
+                        column_config={
+                            "Preço": st.column_config.NumberColumn(format="%.2f ISK"),
+                            "Quantidade": st.column_config.NumberColumn(format="%d"),
+                            "Total": st.column_config.NumberColumn(format="%,.0f ISK"),
+                        },
+                    )
+                with sell_col:
+                    st.markdown("**🟩 Venda — ordens consumidas**")
+                    st.dataframe(
+                        sell_rows,
+                        width="stretch",
+                        hide_index=True,
+                        column_config={
+                            "Preço": st.column_config.NumberColumn(format="%.2f ISK"),
+                            "Quantidade": st.column_config.NumberColumn(format="%d"),
+                            "Total": st.column_config.NumberColumn(format="%,.0f ISK"),
+                        },
+                    )
+
+                st.caption(
+                    f'Execução: {selected["quantity"]:,} unidades · '
+                    f'compra média {selected["avg_buy_price"]:,.2f} ISK · '
+                    f'venda média {selected["avg_sell_price"]:,.2f} ISK · '
+                    f'lucro líquido {selected["net_profit"]:,.0f} ISK'
+                )
+
             st.subheader("Melhores operações")
 
             rank_options = {

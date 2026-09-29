@@ -5,6 +5,7 @@ from sqlalchemy import and_, select
 
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
+from arbitrageve.market.execution import simulate_order_book_execution
 from arbitrageve.market.metrics import ExecutionProfile, estimate_isk_per_hour
 from arbitrageve.services.risk import RiskProfile, analyze_route, route_allowed
 
@@ -357,13 +358,25 @@ def find_opportunities(
                 if diagnostics is not None:
                     diagnostics["quantity_executable"] += 1
 
-                _, spent = _consume_orders(source_book, quantity)
-                _, revenue = _sell_orders(destination_book, quantity)
-                trade_costs = calculate_trade_costs(
-                    revenue, quantity * volume, jumps, costs
+                execution = simulate_order_book_execution(
+                    source_book,
+                    destination_book,
+                    quantity,
+                    volume,
+                    jumps,
+                    costs,
                 )
-                gross_profit = revenue - spent
-                net_profit = gross_profit - trade_costs["total_costs"]
+                spent = execution["buy_cost"]
+                revenue = execution["sell_revenue"]
+                trade_costs = {
+                    "sales_tax": execution["sales_tax"],
+                    "broker_fee": execution["broker_fee"],
+                    "transport_cost": execution["transport_cost"],
+                    "safety_margin": execution["safety_margin"],
+                    "total_costs": execution["total_costs"],
+                }
+                gross_profit = execution["gross_profit"]
+                net_profit = execution["net_profit"]
                 roi = net_profit / spent if spent else 0.0
                 estimated_minutes = (
                     execution_profile.fixed_minutes
@@ -414,6 +427,12 @@ def find_opportunities(
                     "spread_isk": spread_isk, "spread_pct": spread_pct,
                     "source_book_volume": source_book_volume,
                     "destination_book_volume": destination_book_volume,
+                    "buy_levels": execution["buy_levels"],
+                    "sell_levels": execution["sell_levels"],
+                    "buy_levels_used": execution["buy_levels_used"],
+                    "sell_levels_used": execution["sell_levels_used"],
+                    "buy_marginal_price": execution["buy_marginal_price"],
+                    "sell_marginal_price": execution["sell_marginal_price"],
                     "book_capacity": book_capacity,
                     "book_coverage": book_coverage,
                     "liquidity_class": liquidity_class,
