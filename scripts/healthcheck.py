@@ -3,7 +3,14 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 
 from arbitrageve.db.database import SessionLocal, init_db
-from arbitrageve.db.models import AppState, Item, MarketOrder, Region, SolarSystem, Stargate
+from arbitrageve.db.models import (
+    AppState,
+    Item,
+    MarketOrder,
+    Region,
+    SolarSystem,
+    Stargate,
+)
 
 
 def main() -> int:
@@ -33,7 +40,9 @@ def main() -> int:
     print(f"worker_status: {worker_status or 'UNKNOWN'}")
     print(f"latest_market_snapshot: {latest_market or 'MISSING'}")
 
-    universe_ready = all(counts[key] > 0 for key in ("items", "regions", "systems", "stargates"))
+    universe_ready = all(
+        counts[key] > 0 for key in ("items", "regions", "systems", "stargates")
+    )
     market_ready = counts["orders"] > 0 and latest_market is not None
 
     if not universe_ready:
@@ -44,7 +53,9 @@ def main() -> int:
         return 2
 
     if latest_market.tzinfo is None:
-        age_minutes = (datetime.now(UTC).replace(tzinfo=None) - latest_market).total_seconds() / 60
+        age_minutes = (
+            datetime.now(UTC).replace(tzinfo=None) - latest_market
+        ).total_seconds() / 60
     else:
         age_minutes = (datetime.now(UTC) - latest_market).total_seconds() / 60
 
