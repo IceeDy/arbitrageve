@@ -17,7 +17,10 @@ from arbitrageve.db.models import Region, Stargate
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
 from arbitrageve.sde.routes import LocalRouteClient
-from arbitrageve.services.opportunities import find_global_opportunities, find_opportunities
+from arbitrageve.services.opportunities import (
+    find_global_opportunities,
+    find_opportunities,
+)
 from arbitrageve.services.risk import RiskProfile
 
 st.set_page_config(page_title="ArbitragEVE", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
