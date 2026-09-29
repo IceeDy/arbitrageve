@@ -21,4 +21,5 @@ jobs:
       - name: Ruff
         run: ruff check .
       - name: Pytest
-        run: pytest -q
+        timeout-minutes: 10
+        run: pytest -q -vv --durations=20
