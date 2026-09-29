@@ -2,6 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import sessionmaker
 
+from tests.db import create_test_engine
+
 from arbitrageve.config.settings import settings
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import AppState, MarketOrder, Region
@@ -9,7 +11,7 @@ from arbitrageve.services.market_worker import (
     calculate_region_refresh_minutes,
     select_regions_for_refresh,
 )
-from tests.db import create_test_engine
+
 
 def _session():
     engine = create_test_engine()
