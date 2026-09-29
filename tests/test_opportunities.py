@@ -614,3 +614,114 @@ def test_discover_global_candidates_filters_by_capital_cargo_and_profit():
     assert len(candidates) == 1
     assert candidates[0]["max_quantity_bound"] == 5
     assert candidates[0]["optimistic_profit"] == 1350.0
+
+
+def test_execution_auditor_verifies_capital_cargo_book_costs_and_levels():
+    from arbitrageve.services.opportunities import audit_opportunity_execution
+
+    opportunity = {
+        "quantity": 100,
+        "buy_cost": 10_000.0,
+        "sell_revenue": 12_000.0,
+        "total_costs": 900.0,
+        "net_profit": 1_100.0,
+        "capital_required": 10_900.0,
+        "volume_m3": 50.0,
+        "source_book_volume": 200,
+        "destination_book_volume": 150,
+        "buy_levels": [{"quantity": 100}],
+        "sell_levels": [{"quantity": 100}],
+        "route_system_ids": [1, 2, 3],
+        "route_known": True,
+        "jumps": 2,
+        "route_class": "highsec",
+        "market_age_minutes": 10.0,
+        "capital_efficiency": 0.11,
+        "roi": 0.11,
+    }
+
+    audit = audit_opportunity_execution(
+        opportunity,
+        capital_isk=12_000,
+        cargo_m3=100,
+        max_market_age_minutes=60,
+    )
+
+    assert audit["execution_verified"] is True
+    assert audit["execution_audit_issues"] == []
+    assert audit["capital_headroom"] == 1_100
+    assert audit["cargo_headroom_m3"] == 50
+    assert audit["book_headroom"] == 50
+    assert audit["capital_efficiency_equals_roi"] is True
+
+
+def test_execution_auditor_rejects_partial_or_unknown_route():
+    from arbitrageve.services.opportunities import audit_opportunity_execution
+
+    opportunity = {
+        "quantity": 10,
+        "buy_cost": 1_000.0,
+        "sell_revenue": 1_500.0,
+        "total_costs": 100.0,
+        "net_profit": 400.0,
+        "capital_required": 1_100.0,
+        "volume_m3": 10.0,
+        "source_book_volume": 10,
+        "destination_book_volume": 10,
+        "buy_levels": [{"quantity": 10}],
+        "sell_levels": [{"quantity": 10}],
+        "route_system_ids": [1],
+        "route_known": False,
+        "jumps": 3,
+        "route_class": "highsec",
+        "market_age_minutes": 5.0,
+        "capital_efficiency": 0.4,
+        "roi": 0.4,
+    }
+
+    audit = audit_opportunity_execution(
+        opportunity,
+        capital_isk=2_000,
+        cargo_m3=10,
+        max_market_age_minutes=60,
+    )
+
+    assert audit["execution_verified"] is False
+    assert "route" in audit["execution_audit_issues"]
+
+
+def test_execution_auditor_detects_capital_cargo_book_and_stale_market():
+    from arbitrageve.services.opportunities import audit_opportunity_execution
+
+    opportunity = {
+        "quantity": 20,
+        "buy_cost": 2_000.0,
+        "sell_revenue": 3_000.0,
+        "total_costs": 100.0,
+        "net_profit": 900.0,
+        "capital_required": 2_100.0,
+        "volume_m3": 25.0,
+        "source_book_volume": 10,
+        "destination_book_volume": 15,
+        "buy_levels": [{"quantity": 20}],
+        "sell_levels": [{"quantity": 20}],
+        "route_system_ids": [1, 2],
+        "route_known": True,
+        "jumps": 1,
+        "route_class": "highsec",
+        "market_age_minutes": 120.0,
+        "capital_efficiency": 0.45,
+        "roi": 0.45,
+    }
+
+    audit = audit_opportunity_execution(
+        opportunity,
+        capital_isk=2_000,
+        cargo_m3=10,
+        max_market_age_minutes=60,
+    )
+
+    assert audit["execution_verified"] is False
+    assert {"capital", "cargo", "order_book", "market_freshness"} <= set(
+        audit["execution_audit_issues"]
+    )

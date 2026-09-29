@@ -158,6 +158,113 @@ def calculate_operational_score(opportunity: dict) -> dict[str, float]:
     score = execution * 0.25 + liquidity * 0.20 + roi * 0.15 + isk_hour * 0.20 + depth * 0.10 + route * 0.10
     return {'operational_score': round(score, 2), 'score_execution': round(execution, 2), 'score_liquidity': round(liquidity, 2), 'score_roi': round(roi, 2), 'score_isk_hour': round(isk_hour, 2), 'score_depth': round(depth, 2), 'score_route': round(route, 2)}
 
+def audit_opportunity_execution(
+    opportunity: dict,
+    *,
+    capital_isk: float,
+    cargo_m3: float,
+    max_market_age_minutes: float | None = 60.0,
+) -> dict:
+    """Audit whether an already-calculated opportunity is internally executable.
+
+    This is deliberately separate from ranking. It validates the arithmetic and
+    hard constraints that must hold before a displayed profit is treated as
+    executable: capital, cargo, both books, modeled costs, route completeness,
+    market freshness, and the level-by-level execution quantities.
+    """
+    quantity = int(opportunity.get("quantity", 0))
+    buy_cost = float(opportunity.get("buy_cost", 0.0))
+    revenue = float(opportunity.get("sell_revenue", 0.0))
+    total_costs = float(opportunity.get("total_costs", 0.0))
+    net_profit = float(opportunity.get("net_profit", 0.0))
+    capital_required = float(opportunity.get("capital_required", buy_cost + total_costs))
+    volume_m3 = float(opportunity.get("volume_m3", 0.0))
+    source_book = int(opportunity.get("source_book_volume", 0))
+    destination_book = int(opportunity.get("destination_book_volume", 0))
+    route = opportunity.get("route_system_ids") or []
+    jumps = int(opportunity.get("jumps", 0))
+    market_age = opportunity.get("market_age_minutes")
+
+    issues: list[str] = []
+
+    capital_ok = capital_required <= float(capital_isk) + 1e-9
+    cargo_ok = volume_m3 <= float(cargo_m3) + 1e-9
+    book_ok = (
+        quantity > 0
+        and quantity <= source_book
+        and quantity <= destination_book
+    )
+
+    arithmetic_ok = (
+        buy_cost >= 0
+        and revenue >= 0
+        and total_costs >= 0
+        and abs((revenue - buy_cost - total_costs) - net_profit) <= 1e-6
+    )
+
+    buy_levels = opportunity.get("buy_levels") or []
+    sell_levels = opportunity.get("sell_levels") or []
+    buy_level_quantity = sum(int(level.get("quantity", 0)) for level in buy_levels)
+    sell_level_quantity = sum(int(level.get("quantity", 0)) for level in sell_levels)
+    levels_ok = (
+        buy_level_quantity == quantity
+        and sell_level_quantity == quantity
+        and all(int(level.get("quantity", 0)) > 0 for level in (*buy_levels, *sell_levels))
+    )
+
+    route_ok = (
+        bool(opportunity.get("route_known", False))
+        and bool(route)
+        and all(isinstance(system_id, int) for system_id in route)
+        and len(route) == jumps + 1
+        and opportunity.get("route_class") in {"highsec", "lowsec", "nullsec"}
+    )
+
+    freshness_ok = (
+        max_market_age_minutes is None
+        or market_age is not None and float(market_age) <= max_market_age_minutes + 1e-9
+    )
+
+    profit_ok = net_profit >= 0
+    for name, ok in (
+        ("capital", capital_ok),
+        ("cargo", cargo_ok),
+        ("order_book", book_ok),
+        ("arithmetic", arithmetic_ok),
+        ("execution_levels", levels_ok),
+        ("route", route_ok),
+        ("market_freshness", freshness_ok),
+        ("profit", profit_ok),
+    ):
+        if not ok:
+            issues.append(name)
+
+    capital_headroom = float(capital_isk) - capital_required
+    cargo_headroom = float(cargo_m3) - volume_m3
+    book_headroom = min(source_book, destination_book) - quantity
+    cost_ratio = total_costs / buy_cost if buy_cost > 0 else 0.0
+
+    return {
+        "execution_verified": not issues,
+        "execution_audit_issues": issues,
+        "capital_ok": capital_ok,
+        "cargo_ok": cargo_ok,
+        "book_ok": book_ok,
+        "arithmetic_ok": arithmetic_ok,
+        "execution_levels_ok": levels_ok,
+        "route_ok": route_ok,
+        "market_freshness_ok": freshness_ok,
+        "profit_ok": profit_ok,
+        "capital_headroom": capital_headroom,
+        "cargo_headroom_m3": cargo_headroom,
+        "book_headroom": book_headroom,
+        "cost_ratio": cost_ratio,
+        "capital_efficiency_equals_roi": abs(
+            float(opportunity.get("capital_efficiency", 0.0))
+            - float(opportunity.get("roi", 0.0))
+        ) <= 1e-12,
+    }
+
 def find_opportunities(
     session,
     source_region_id,
@@ -324,9 +431,17 @@ def find_opportunities(
                         system_cache[system_id] = session.get(SolarSystem, system_id)
                     if system_cache[system_id] is not None:
                         systems.append(system_cache[system_id])
+                missing_systems = len(route) - len(systems)
                 if diagnostics is not None:
                     diagnostics["route_systems_found"] += len(systems)
-                    diagnostics["route_systems_missing"] += len(route) - len(systems)
+                    diagnostics["route_systems_missing"] += missing_systems
+
+                # A route returned by the route client can still be
+                # executable even when the local SDE does not contain all
+                # systems. Keep the opportunity, but let the audit mark the
+                # route as unverified instead of inventing security data.
+                if missing_systems and diagnostics is not None:
+                    diagnostics["rejected_unknown_route"] += 1
 
                 risk = analyze_route(systems, jumps)
                 risk["jumps"] = jumps
@@ -464,6 +579,14 @@ def find_opportunities(
                     "destination_region_id": destination_region_id,
                 })
                 results[-1].update(calculate_operational_score(results[-1]))
+                results[-1].update(
+                    audit_opportunity_execution(
+                        results[-1],
+                        capital_isk=capital_isk,
+                        cargo_m3=cargo_m3,
+                        max_market_age_minutes=max_market_age_minutes,
+                    )
+                )
 
     results = sorted(results, key=lambda x: x["capital_efficiency"] if sort_by == "capital_efficiency" else x[sort_by], reverse=True)[:limit]
     if diagnostics is not None:
