@@ -596,7 +596,7 @@ def test_discover_global_candidates_filters_by_capital_cargo_and_profit():
         ),
         MarketOrder(
             order_id=2002, region_id=10000043, system_id=2, location_id=20,
-            type_id=200, price=150, volume_remain=100, volume_total=100,
+            type_id=200, price=400, volume_remain=100, volume_total=100,
             is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
         ),
     ])
@@ -613,4 +613,4 @@ def test_discover_global_candidates_filters_by_capital_cargo_and_profit():
 
     assert len(candidates) == 1
     assert candidates[0]["max_quantity_bound"] == 5
-    assert candidates[0]["optimistic_profit"] == 212.5
+    assert candidates[0]["optimistic_profit"] == 1350.0
