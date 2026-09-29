@@ -9,6 +9,7 @@ load_repo_module("arbitrageve.db.models", "arbitrageve/db/models.py")
 load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
 
 import streamlit as st
+from theme import apply_eve_theme, render_topbar
 
 from arbitrageve.config.regions import REGIONS
 from arbitrageve.config.settings import settings
@@ -22,7 +23,6 @@ from arbitrageve.services.opportunities import (
     find_opportunities,
 )
 from arbitrageve.services.risk import RiskProfile
-from theme import apply_eve_theme, render_topbar
 
 st.set_page_config(page_title="ArbitragEVE", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
 init_db()
