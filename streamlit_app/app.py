@@ -381,9 +381,16 @@ else:
                 ]
                 st.dataframe(factor_rows, width="stretch", hide_index=True)
 
+                score_cols = st.columns(6)
+                score_cols[0].metric("Execution", f'{selected.get("score_execution", 0.0):.0f}')
+                score_cols[1].metric("Liquidity", f'{selected.get("score_liquidity", 0.0):.0f}')
+                score_cols[2].metric("ROI", f'{selected.get("score_roi", 0.0):.0f}')
+                score_cols[3].metric("ISK/h", f'{selected.get("score_isk_hour", 0.0):.0f}')
+                score_cols[4].metric("Depth", f'{selected.get("score_depth", 0.0):.0f}')
+                score_cols[5].metric("Route", f'{selected.get("score_route", 0.0):.0f}')
                 st.caption(
                     f'Operational score: {selected.get("operational_score", 0.0):.1f}/100 · '
-                    f'{selected.get("operational_score_class", "n/a")}'
+                    "composição transparente dos fatores acima"
                 )
 
             st.markdown('<div class="eve-section">Route intelligence</div>', unsafe_allow_html=True)
