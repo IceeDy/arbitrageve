@@ -482,12 +482,7 @@ def discover_global_candidates(
     costs: TradeCosts | None = None,
     max_candidates: int = 200,
 ) -> list[dict]:
-    """Discover cross-region candidates using cheap, bounded SQL filters.
-
-    The result is intentionally an optimistic pre-route shortlist. It filters
-    on executable volume, capital/cargo bounds, snapshot freshness and a
-    conservative per-unit cost model before invoking the detailed engine.
-    """
+    """Discover cross-region candidates with SQL-first cheap filters."""
     costs = costs or TradeCosts()
     costs.validate()
     if min_roi < 0:
@@ -503,13 +498,19 @@ def discover_global_candidates(
     if max_candidates < 1:
         raise ValueError("max_candidates must be positive")
 
+    now = datetime.now(UTC).replace(tzinfo=None)
+    cutoff = (
+        now.timestamp() - max_market_age_minutes * 60
+        if max_market_age_minutes is not None
+        else None
+    )
+
     sells = (
         select(
             MarketOrder.region_id.label("source_region_id"),
             MarketOrder.type_id.label("type_id"),
             func.min(MarketOrder.price).label("buy_price"),
             func.sum(MarketOrder.volume_remain).label("source_volume"),
-            func.max(MarketOrder.collected_at).label("source_latest"),
             func.min(MarketOrder.collected_at).label("source_oldest"),
         )
         .where(
@@ -525,7 +526,6 @@ def discover_global_candidates(
             MarketOrder.type_id.label("type_id"),
             func.max(MarketOrder.price).label("sell_price"),
             func.sum(MarketOrder.volume_remain).label("destination_volume"),
-            func.max(MarketOrder.collected_at).label("destination_latest"),
             func.min(MarketOrder.collected_at).label("destination_oldest"),
         )
         .where(
@@ -535,6 +535,37 @@ def discover_global_candidates(
         .group_by(MarketOrder.region_id, MarketOrder.type_id)
         .subquery()
     )
+
+    buy_price = sells.c.buy_price
+    sell_price = buys.c.sell_price
+    net_per_unit = sell_price * (
+        1 - costs.sales_tax_rate - costs.broker_fee_rate
+    )
+    book_quantity = func.min(
+        sells.c.source_volume,
+        buys.c.destination_volume,
+    )
+    optimistic_book_profit = (net_per_unit - buy_price) * book_quantity
+    optimistic_roi = (net_per_unit - buy_price) / buy_price
+
+    conditions = [
+        buy_price > 0,
+        sell_price > buy_price,
+        Item.volume > 0,
+        optimistic_roi >= min_roi,
+        optimistic_book_profit >= min_profit_isk,
+    ]
+    if capital_isk is not None:
+        conditions.append(buy_price <= capital_isk)
+
+    if max_market_age_minutes is not None:
+        cutoff_dt = datetime.fromtimestamp(cutoff, UTC).replace(tzinfo=None)
+        conditions.extend(
+            [
+                sells.c.source_oldest >= cutoff_dt,
+                buys.c.destination_oldest >= cutoff_dt,
+            ]
+        )
 
     stmt = (
         select(
@@ -547,10 +578,7 @@ def discover_global_candidates(
             buys.c.destination_volume,
             sells.c.source_oldest,
             buys.c.destination_oldest,
-            (
-                buys.c.sell_price
-                - sells.c.buy_price
-            ).label("spread_isk"),
+            Item.volume.label("volume"),
         )
         .select_from(
             sells.join(
@@ -559,21 +587,18 @@ def discover_global_candidates(
                     buys.c.type_id == sells.c.type_id,
                     buys.c.destination_region_id != sells.c.source_region_id,
                 ),
-            )
+            ).join(Item, Item.type_id == sells.c.type_id)
         )
-        .where(
-            sells.c.buy_price > 0,
-            buys.c.sell_price > sells.c.buy_price,
+        .where(*conditions)
+        .order_by(
+            optimistic_book_profit.desc(),
+            optimistic_roi.desc(),
+            (sell_price - buy_price).desc(),
         )
+        .limit(max_candidates * 4)
     )
 
-    if cargo_m3 is not None and cargo_m3 > 0:
-        # Item volume is resolved after the cheap market aggregation. This
-        # coarse filter only excludes impossible zero/negative cargo limits.
-        stmt = stmt.where(sells.c.source_volume > 0, buys.c.destination_volume > 0)
-
     rows = session.execute(stmt).mappings().all()
-    now = datetime.now(UTC).replace(tzinfo=None)
     candidates = []
 
     for row in rows:
@@ -587,16 +612,10 @@ def discover_global_candidates(
                 if timestamp is not None
             )
             age_minutes = max(0.0, (now - oldest).total_seconds() / 60.0)
-            if age_minutes > max_market_age_minutes:
-                continue
         else:
             age_minutes = None
 
-        item = session.get(Item, row["type_id"])
-        volume = item.volume if item else 0.0
-        if volume <= 0:
-            continue
-
+        volume = float(row["volume"])
         max_by_book = min(row["source_volume"], row["destination_volume"])
         max_by_cargo = (
             math.floor(cargo_m3 / volume + 1e-9)
@@ -607,42 +626,51 @@ def discover_global_candidates(
         if max_quantity <= 0:
             continue
 
-        buy_price = float(row["buy_price"])
-        sell_price = float(row["sell_price"])
-        net_per_unit = (
-            sell_price * (1 - costs.sales_tax_rate - costs.broker_fee_rate)
-            - buy_price
+        buy_price_value = float(row["buy_price"])
+        sell_price_value = float(row["sell_price"])
+        net_per_unit_value = (
+            sell_price_value
+            * (1 - costs.sales_tax_rate - costs.broker_fee_rate)
+            - buy_price_value
         )
-        optimistic_roi = net_per_unit / buy_price if buy_price > 0 else 0.0
-        optimistic_profit = net_per_unit * max_quantity
+        optimistic_roi_value = (
+            net_per_unit_value / buy_price_value
+            if buy_price_value > 0
+            else 0.0
+        )
+        optimistic_profit = net_per_unit_value * max_quantity
 
-        if optimistic_roi < min_roi:
+        if (
+            optimistic_roi_value < min_roi
+            or optimistic_profit < min_profit_isk
+        ):
             continue
-        if optimistic_profit < min_profit_isk:
-            continue
-        if capital_isk is not None and buy_price * max_quantity > capital_isk:
+
+        if capital_isk is not None and buy_price_value * max_quantity > capital_isk:
             max_quantity = min(
                 max_quantity,
-                math.floor(capital_isk / buy_price),
+                math.floor(capital_isk / buy_price_value),
             )
-            optimistic_profit = net_per_unit * max_quantity
+            optimistic_profit = net_per_unit_value * max_quantity
             if max_quantity <= 0 or optimistic_profit < min_profit_isk:
                 continue
 
-        candidates.append({
-            "type_id": row["type_id"],
-            "source_region_id": row["source_region_id"],
-            "destination_region_id": row["destination_region_id"],
-            "buy_price": buy_price,
-            "sell_price": sell_price,
-            "source_volume": row["source_volume"],
-            "destination_volume": row["destination_volume"],
-            "spread_isk": row["spread_isk"],
-            "optimistic_roi": optimistic_roi,
-            "optimistic_profit": optimistic_profit,
-            "max_quantity_bound": int(max_quantity),
-            "market_age_minutes": age_minutes,
-        })
+        candidates.append(
+            {
+                "type_id": row["type_id"],
+                "source_region_id": row["source_region_id"],
+                "destination_region_id": row["destination_region_id"],
+                "buy_price": buy_price_value,
+                "sell_price": sell_price_value,
+                "source_volume": row["source_volume"],
+                "destination_volume": row["destination_volume"],
+                "spread_isk": sell_price_value - buy_price_value,
+                "optimistic_roi": optimistic_roi_value,
+                "optimistic_profit": optimistic_profit,
+                "max_quantity_bound": int(max_quantity),
+                "market_age_minutes": age_minutes,
+            }
+        )
 
     candidates.sort(
         key=lambda row: (
