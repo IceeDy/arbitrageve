@@ -6,8 +6,6 @@ from sqlalchemy.orm import sessionmaker
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import MarketOrder
 from arbitrageve.market.collector import collect_region, collect_regions
-
-
 from tests.db import create_test_engine
 
 
