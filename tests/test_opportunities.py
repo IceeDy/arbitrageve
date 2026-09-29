@@ -13,7 +13,6 @@ from arbitrageve.services.opportunities import (
 )
 from tests.db import create_test_engine
 
-
 FRESH_COLLECTED_AT = datetime.now(UTC).replace(tzinfo=None)
 
 
