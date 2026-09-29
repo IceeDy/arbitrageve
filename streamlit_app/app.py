@@ -13,7 +13,7 @@ import streamlit as st
 from arbitrageve.config.regions import REGIONS, THE_FORGE
 from arbitrageve.config.settings import settings
 from arbitrageve.db.database import SessionLocal, init_db
-from arbitrageve.db.models import Stargate
+from arbitrageve.db.models import Region, Stargate
 from arbitrageve.market.costs import TradeCosts
 from arbitrageve.market.metrics import ExecutionProfile
 from arbitrageve.sde.routes import LocalRouteClient
@@ -30,12 +30,24 @@ with st.sidebar:
     st.header("Operação")
     capital = st.number_input("Capital (ISK)", min_value=0.0, value=settings.capital_isk, step=1_000_000.0)
     cargo = st.number_input("Cargo (m³)", min_value=0.0, value=settings.cargo_m3, step=10.0)
-    source = st.selectbox("Comprar em", options=list(REGIONS), format_func=lambda x: REGIONS[x])
+    with SessionLocal() as region_session:
+        db_regions = {
+            region.region_id: region.name
+            for region in region_session.query(Region).order_by(Region.name).all()
+        }
+    market_regions = db_regions or REGIONS
+    region_ids = list(market_regions)
+
+    source = st.selectbox(
+        "Comprar em",
+        options=region_ids,
+        format_func=lambda region_id: market_regions[region_id],
+    )
+    destination_options = [region_id for region_id in region_ids if region_id != source]
     destination = st.selectbox(
         "Vender em",
-        options=list(REGIONS),
-        index=1 if source == THE_FORGE else 0,
-        format_func=lambda x: REGIONS[x],
+        options=destination_options,
+        format_func=lambda region_id: market_regions[region_id],
     )
     min_roi = st.slider("ROI líquido mínimo", 0.0, 1.0, 0.05, 0.01)
     min_profit = st.number_input("Lucro líquido mínimo", min_value=0.0, value=100_000.0, step=100_000.0)
