@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from theme import apply_eve_theme, render_topbar
 
 from arbitrageve.db.database import DATABASE_URL, SessionLocal, init_db
-from arbitrageve.db.models import Item, MarketOrder, Region, SolarSystem, Stargate
+from arbitrageve.db.models import AppState, Item, MarketOrder, Region, SolarSystem, Stargate
 from arbitrageve.esi.client import ESIRequestError
 from arbitrageve.market.collector import collect_region
 from arbitrageve.sde.loader import (
@@ -33,7 +33,7 @@ init_db()
 apply_eve_theme()
 render_topbar("DATA CENTER")
 
-st.caption("Static universe data · market snapshots · database health")
+st.caption("Static universe data · persistent market snapshots · incremental worker health")
 
 with SessionLocal() as session:
     item_count = session.scalar(select(func.count()).select_from(Item)) or 0
@@ -45,6 +45,8 @@ with SessionLocal() as session:
         select(func.count(func.distinct(MarketOrder.region_id))).select_from(MarketOrder)
     ) or 0
     latest_snapshot = session.scalar(select(func.max(MarketOrder.collected_at)).select_from(MarketOrder))
+    sde_version = session.scalar(select(AppState.value).where(AppState.key == "sde.loader_version"))
+    sde_loaded_at = session.scalar(select(AppState.value).where(AppState.key == "sde.loaded_at"))
 
 st.markdown('<div class="eve-section">Database status</div>', unsafe_allow_html=True)
 status_cols = st.columns(5)
@@ -53,6 +55,11 @@ status_cols[1].metric("Regions", f"{region_count:,}")
 status_cols[2].metric("Systems", f"{system_count:,}")
 status_cols[3].metric("Stargates", f"{stargate_count:,}")
 status_cols[4].metric("Orders", f"{order_count:,}")
+
+worker_cols = st.columns(3)
+worker_cols[0].metric("SDE version", sde_version or "—")
+worker_cols[1].metric("SDE loaded", sde_loaded_at or "—")
+worker_cols[2].metric("Worker mode", "INCREMENTAL")
 
 db_state = "ONLINE" if DATABASE_URL else "UNKNOWN"
 sde_state = "READY" if item_count and region_count and system_count and stargate_count else "INCOMPLETE"
