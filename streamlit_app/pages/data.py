@@ -54,6 +54,21 @@ with SessionLocal() as session:
     latest_snapshot = session.scalar(select(func.max(MarketOrder.collected_at)).select_from(MarketOrder))
     sde_version = session.scalar(select(AppState.value).where(AppState.key == "sde.loader_version"))
     sde_loaded_at = session.scalar(select(AppState.value).where(AppState.key == "sde.loaded_at"))
+    worker_started_at = session.scalar(
+        select(AppState.value).where(AppState.key == "market_worker.last_started_at")
+    )
+    worker_finished_at = session.scalar(
+        select(AppState.value).where(AppState.key == "market_worker.last_finished_at")
+    )
+    worker_status = session.scalar(
+        select(AppState.value).where(AppState.key == "market_worker.status")
+    )
+    worker_regions = session.scalar(
+        select(AppState.value).where(AppState.key == "market_worker.last_regions")
+    )
+    worker_error = session.scalar(
+        select(AppState.value).where(AppState.key == "market_worker.last_error")
+    )
 
 st.markdown('<div class="eve-section">Database status</div>', unsafe_allow_html=True)
 status_cols = st.columns(5)
@@ -63,10 +78,17 @@ status_cols[2].metric("Systems", f"{system_count:,}")
 status_cols[3].metric("Stargates", f"{stargate_count:,}")
 status_cols[4].metric("Orders", f"{order_count:,}")
 
-worker_cols = st.columns(3)
+worker_cols = st.columns(5)
 worker_cols[0].metric("SDE version", sde_version or "—")
 worker_cols[1].metric("SDE loaded", sde_loaded_at or "—")
 worker_cols[2].metric("Worker mode", "INCREMENTAL")
+worker_cols[3].metric("Worker status", worker_status or "—")
+worker_cols[4].metric("Last run", worker_finished_at or worker_started_at or "—")
+
+if worker_regions:
+    st.caption(f"Última execução: regiões {worker_regions}")
+if worker_status == "ERROR" and worker_error:
+    st.error(f"Último erro do worker: {worker_error}")
 
 db_state = "ONLINE" if DATABASE_URL else "UNKNOWN"
 sde_state = "READY" if item_count and region_count and system_count and stargate_count else "INCOMPLETE"
