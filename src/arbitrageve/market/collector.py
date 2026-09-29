@@ -7,12 +7,7 @@ from arbitrageve.esi.market import MarketClient
 
 
 def _deduplicate_orders(orders: list[dict]) -> list[dict]:
-    """Keep one record per ESI order ID.
-
-    Market pages can overlap while the live order book changes during a
-    paginated snapshot. The primary key is the ESI order_id, so duplicate
-    rows must be collapsed before insertion.
-    """
+    """Keep one record per ESI order ID."""
     unique: dict[int, dict] = {}
     for order in orders:
         unique[order["order_id"]] = order
@@ -25,13 +20,12 @@ def collect_region(
     client: MarketClient | None = None,
     progress_callback=None,
 ) -> int:
-    """Replace a region with one complete ESI market snapshot."""
+    """Replace one region with a complete ESI market snapshot."""
     client = client or MarketClient()
     stamp = datetime.now(UTC).replace(tzinfo=None)
 
     first_page, pages = client.get_orders(region_id, page=1)
     collected = list(first_page)
-
     if progress_callback:
         progress_callback(1, pages, len(collected))
 
@@ -48,7 +42,6 @@ def collect_region(
         issued = data.get("issued")
         if issued:
             issued = datetime.fromisoformat(issued).replace(tzinfo=None)
-
         session.add(
             MarketOrder(
                 order_id=data["order_id"],
@@ -68,3 +61,25 @@ def collect_region(
 
     session.commit()
     return len(collected)
+
+
+def collect_regions(
+    session,
+    region_ids,
+    client: MarketClient | None = None,
+    progress_callback=None,
+) -> dict[int, int]:
+    """Collect multiple regions without hard-coding a market universe."""
+    results: dict[int, int] = {}
+    region_ids = list(dict.fromkeys(int(region_id) for region_id in region_ids))
+
+    for index, region_id in enumerate(region_ids, start=1):
+        if progress_callback:
+            progress_callback(index, len(region_ids), region_id)
+        results[region_id] = collect_region(
+            session,
+            region_id,
+            client=client,
+        )
+
+    return results
