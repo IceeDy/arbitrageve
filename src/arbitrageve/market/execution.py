@@ -64,12 +64,39 @@ def simulate_order_book_execution(
     gross_profit = revenue - spent
     net_profit = gross_profit - trade_costs["total_costs"]
 
+    avg_buy_price = spent / quantity if quantity else 0.0
+    avg_sell_price = revenue / quantity if quantity else 0.0
+    top_buy_price = source_orders[0].price if source_orders else None
+    top_sell_price = destination_orders[0].price if destination_orders else None
+    buy_slippage_isk = (
+        avg_buy_price - top_buy_price
+        if top_buy_price is not None
+        else 0.0
+    )
+    sell_slippage_isk = (
+        top_sell_price - avg_sell_price
+        if top_sell_price is not None
+        else 0.0
+    )
+    buy_slippage_pct = buy_slippage_isk / top_buy_price if top_buy_price else 0.0
+    sell_slippage_pct = sell_slippage_isk / top_sell_price if top_sell_price else 0.0
+    source_depth = sum(order.volume_remain for order in source_orders)
+    destination_depth = sum(order.volume_remain for order in destination_orders)
+
     return {
         "quantity": quantity,
         "buy_cost": spent,
         "sell_revenue": revenue,
-        "avg_buy_price": spent / quantity if quantity else 0.0,
-        "avg_sell_price": revenue / quantity if quantity else 0.0,
+        "avg_buy_price": avg_buy_price,
+        "avg_sell_price": avg_sell_price,
+        "top_buy_price": top_buy_price,
+        "top_sell_price": top_sell_price,
+        "buy_slippage_isk": buy_slippage_isk,
+        "sell_slippage_isk": sell_slippage_isk,
+        "buy_slippage_pct": buy_slippage_pct,
+        "sell_slippage_pct": sell_slippage_pct,
+        "buy_book_coverage": quantity / source_depth if source_depth else 0.0,
+        "sell_book_coverage": quantity / destination_depth if destination_depth else 0.0,
         "gross_profit": gross_profit,
         "net_profit": net_profit,
         "sales_tax": trade_costs["sales_tax"],

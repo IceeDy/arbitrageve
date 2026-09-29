@@ -62,6 +62,55 @@ def test_order_book_depth_changes_effective_prices():
     assert opportunity["roi"] == 0.3296875
 
 
+
+def test_isk_per_hour_uses_same_return_trip_time_as_estimated_minutes():
+    from arbitrageve.market.metrics import ExecutionProfile, estimate_minutes
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    session.add(Item(type_id=39, name="ISK/h consistency", volume=1.0))
+    session.add_all(
+        [
+            MarketOrder(
+                order_id=391, region_id=10000002, system_id=1, location_id=10,
+                type_id=39, price=100, volume_remain=10, volume_total=10,
+                is_buy_order=False, collected_at=FRESH_COLLECTED_AT,
+            ),
+            MarketOrder(
+                order_id=392, region_id=10000043, system_id=2, location_id=20,
+                type_id=39, price=150, volume_remain=10, volume_total=10,
+                is_buy_order=True, collected_at=FRESH_COLLECTED_AT,
+            ),
+        ]
+    )
+    session.commit()
+
+    profile = ExecutionProfile(
+        fixed_minutes=10.0,
+        minutes_per_jump=2.0,
+        return_trip=True,
+    )
+    result = find_opportunities(
+        session,
+        10000002,
+        10000043,
+        capital_isk=1_200,
+        cargo_m3=10,
+        min_roi=0.0,
+        min_profit_isk=0,
+        execution_profile=profile,
+    )
+
+    assert len(result) == 1
+    opportunity = result[0]
+    expected_minutes = estimate_minutes(opportunity["jumps"], profile)
+    assert opportunity["estimated_minutes"] == expected_minutes
+    assert opportunity["isk_per_hour"] == (
+        opportunity["net_profit"] / expected_minutes * 60
+    )
+
 def test_net_profit_applies_sales_tax_and_transport():
     from arbitrageve.market.costs import TradeCosts
 
@@ -450,6 +499,14 @@ def test_order_book_execution_simulation_reports_each_consumed_level():
     assert result["sell_levels_used"] == 2
     assert result["buy_marginal_price"] == 110
     assert result["sell_marginal_price"] == 150
+    assert result["top_buy_price"] == 100
+    assert result["top_sell_price"] == 160
+    assert result["buy_slippage_isk"] == 2.0
+    assert result["sell_slippage_isk"] == 4.0
+    assert result["buy_slippage_pct"] == 0.02
+    assert result["sell_slippage_pct"] == 0.025
+    assert result["buy_book_coverage"] == 125 / 150
+    assert result["sell_book_coverage"] == 125 / 150
     assert result["sales_tax"] == 1_950
     assert result["net_profit"] == 4_800
 
@@ -495,6 +552,14 @@ def test_opportunity_exposes_execution_levels_and_marginal_prices():
     assert opportunity["sell_levels_used"] == 2
     assert opportunity["buy_marginal_price"] == 120
     assert opportunity["sell_marginal_price"] == 140
+    assert opportunity["top_buy_price"] == 100
+    assert opportunity["top_sell_price"] == 150
+    assert opportunity["buy_slippage_isk"] == (16000 / 150) - 100
+    assert opportunity["sell_slippage_isk"] == 150 - (22000 / 150)
+    assert opportunity["buy_slippage_pct"] == ((16000 / 150) - 100) / 100
+    assert opportunity["sell_slippage_pct"] == (150 - (22000 / 150)) / 150
+    assert opportunity["buy_book_coverage"] == 150 / 200
+    assert opportunity["sell_book_coverage"] == 150 / 200
     assert [level["quantity"] for level in opportunity["buy_levels"]] == [100, 50]
     assert [level["quantity"] for level in opportunity["sell_levels"]] == [100, 50]
 
