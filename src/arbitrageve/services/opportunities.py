@@ -1,7 +1,7 @@
 import math
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 
 from arbitrageve.db.models import Item, MarketOrder, SolarSystem
 from arbitrageve.market.costs import TradeCosts, calculate_trade_costs
@@ -541,9 +541,9 @@ def discover_global_candidates(
     net_per_unit = sell_price * (
         1 - costs.sales_tax_rate - costs.broker_fee_rate
     )
-    book_quantity = func.min(
-        sells.c.source_volume,
-        buys.c.destination_volume,
+    book_quantity = case(
+        (sells.c.source_volume < buys.c.destination_volume, sells.c.source_volume),
+        else_=buys.c.destination_volume,
     )
     optimistic_book_profit = (net_per_unit - buy_price) * book_quantity
     optimistic_roi = (net_per_unit - buy_price) / buy_price
