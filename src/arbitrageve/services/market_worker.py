@@ -64,10 +64,19 @@ def select_regions_for_refresh(session, limit: int | None = None) -> list[Region
             else max(0.0, (now - last_collected).total_seconds() / 60)
         )
         if last_collected is None or age_minutes >= refresh_minutes:
+            # Bootstrap regions are due immediately, but configured hub
+            # priority must still be able to break ties among them.
+            overdue_ratio = (
+                1.0
+                if last_collected is None
+                else age_minutes / refresh_minutes
+                if refresh_minutes
+                else float("inf")
+            )
             due_rows.append(
                 (
                     region,
-                    age_minutes / refresh_minutes if refresh_minutes else float("inf"),
+                    overdue_ratio,
                     priority.get(region.name.lower(), 10_000),
                     age_minutes,
                 )
