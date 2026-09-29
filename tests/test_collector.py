@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from arbitrageve.db.database import Base
@@ -8,6 +8,7 @@ from arbitrageve.db.models import MarketOrder
 from arbitrageve.market.collector import collect_region, collect_regions
 
 
+from tests.db import create_test_engine
 class FakeMarketClient:
     def __init__(self, pages):
         self.pages = pages
@@ -20,7 +21,7 @@ class FakeMarketClient:
 
 
 def _session():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine)()
 
