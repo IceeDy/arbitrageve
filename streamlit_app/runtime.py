@@ -21,13 +21,40 @@ _STREAMLIT_SECRET_ENV_MAP = {
     "MARKET_REGION_PRIORITY": "MARKET_REGION_PRIORITY",
 }
 
+_DATABASE_URL_SECRET_PATHS = (
+    ("DATABASE_URL",),
+    ("database_url",),
+    ("database", "url"),
+    ("connections", "postgresql", "url"),
+    ("connections", "postgres", "url"),
+)
+
+
+def _read_secret_path(secrets, path: tuple[str, ...]):
+    current = secrets
+    for key in path:
+        try:
+            current = current[key]
+        except (KeyError, TypeError):
+            return None
+    return current
+
+
+def _resolve_database_url(secrets) -> str | None:
+    """Resolve a PostgreSQL URL from common Streamlit secrets layouts."""
+    for path in _DATABASE_URL_SECRET_PATHS:
+        value = _read_secret_path(secrets, path)
+        if value:
+            return str(value)
+    return None
+
 
 def _configure_streamlit_environment() -> None:
     """Expose supported Streamlit secrets as environment variables.
 
     Existing environment variables always win, which keeps local execution
-    and other deployment environments unchanged. Missing secrets simply leave
-    the current environment untouched.
+    and other deployment environments unchanged. DATABASE_URL is also accepted
+    from the common [database] and [connections.postgresql] Streamlit layouts.
     """
     try:
         import streamlit as st
@@ -40,8 +67,21 @@ def _configure_streamlit_environment() -> None:
     except StreamlitSecretNotFoundError:
         return
 
+    if "DATABASE_URL" not in os.environ:
+        database_url = _resolve_database_url(secrets)
+        if database_url:
+            os.environ["DATABASE_URL"] = database_url
+        elif secrets:
+            raise RuntimeError(
+                "ArbitrageVE requires DATABASE_URL in Streamlit secrets. "
+                "Add a root-level DATABASE_URL, or [database].url / "
+                "[connections.postgresql].url pointing to the persistent PostgreSQL database."
+            )
+
     for env_name, secret_name in _STREAMLIT_SECRET_ENV_MAP.items():
-        if env_name in os.environ or secret_name not in secrets:
+        if env_name == "DATABASE_URL" or env_name in os.environ:
+            continue
+        if secret_name not in secrets:
             continue
         os.environ[env_name] = str(secrets[secret_name])
 
