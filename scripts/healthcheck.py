@@ -7,10 +7,10 @@ from arbitrageve.db.models import (
     AppState,
     Item,
     MarketOrder,
-    Region,
     SolarSystem,
     Stargate,
 )
+from arbitrageve.services.market_worker import audit_region_refresh
 
 
 def main() -> int:
@@ -38,6 +38,7 @@ def main() -> int:
         market_types = session.scalar(
             select(func.count(func.distinct(MarketOrder.type_id)))
         ) or 0
+        refresh_audit = audit_region_refresh(session)
         buy_orders = session.scalar(
             select(func.count()).select_from(MarketOrder).where(MarketOrder.is_buy_order.is_(True))
         ) or 0
@@ -55,6 +56,25 @@ def main() -> int:
     print(f"sde_loaded_at: {sde_loaded or 'MISSING'}")
     print(f"worker_status: {worker_status or 'UNKNOWN'}")
     print(f"latest_market_snapshot: {latest_market or 'MISSING'}")
+
+    refresh_counts = {}
+    overdue_regions = []
+    for row in refresh_audit:
+        status = row["status"]
+        refresh_counts[status] = refresh_counts.get(status, 0) + 1
+        if status == "DUE":
+            overdue_regions.append(
+                f"{row['region']} ({row['age_minutes']:.1f}m / "
+                f"{row['target_refresh_minutes']:.1f}m)"
+            )
+    print(
+        "market_refresh_status: "
+        + ", ".join(
+            f"{status}={count}" for status, count in sorted(refresh_counts.items())
+        )
+    )
+    if overdue_regions:
+        print("market_refresh_due_regions: " + ", ".join(overdue_regions))
 
     universe_ready = all(
         counts[key] > 0 for key in ("items", "regions", "systems", "stargates")
