@@ -4,6 +4,13 @@ from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 
+from arbitrageve.config.market_refresh import (
+    MARKET_REFRESH_BASE_MINUTES,
+    MARKET_REFRESH_MAX_MINUTES,
+    MARKET_REFRESH_MIN_MINUTES,
+    MARKET_REFRESH_ORDER_EXPONENT,
+    MARKET_REFRESH_REFERENCE_ORDERS,
+)
 from arbitrageve.config.settings import settings
 from arbitrageve.db.models import AppState, MarketOrder, Region
 from arbitrageve.market.collector import collect_region
@@ -19,23 +26,16 @@ def _priority_map() -> dict[str, int]:
 
 
 def calculate_region_refresh_minutes(order_count: int) -> float:
-    """Return the target refresh interval for a region.
-
-    More orders mean more market state to keep current. The square-root
-    scaling avoids making very large regions impossible to maintain while
-    still giving them substantially shorter refresh intervals.
-    """
+    """Return the canonical adaptive refresh interval for a region."""
     if order_count <= 0:
-        return float(settings.market_refresh_max_minutes)
+        return float(MARKET_REFRESH_MAX_MINUTES)
 
-    reference = max(1, settings.market_refresh_reference_orders)
-    exponent = max(0.0, settings.market_refresh_order_exponent)
-    interval = settings.market_refresh_minutes * (
-        reference / max(order_count, 1)
-    ) ** exponent
+    interval = MARKET_REFRESH_BASE_MINUTES * (
+        MARKET_REFRESH_REFERENCE_ORDERS / max(order_count, 1)
+    ) ** MARKET_REFRESH_ORDER_EXPONENT
     return min(
-        float(settings.market_refresh_max_minutes),
-        max(float(settings.market_refresh_min_minutes), interval),
+        float(MARKET_REFRESH_MAX_MINUTES),
+        max(float(MARKET_REFRESH_MIN_MINUTES), interval),
     )
 
 

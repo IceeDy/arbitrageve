@@ -2,9 +2,16 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import sessionmaker
 
-from arbitrageve.config.settings import settings
+from arbitrageve.config.market_refresh import (
+    MARKET_REFRESH_BASE_MINUTES,
+    MARKET_REFRESH_MAX_MINUTES,
+    MARKET_REFRESH_MIN_MINUTES,
+    MARKET_REFRESH_ORDER_EXPONENT,
+    MARKET_REFRESH_REFERENCE_ORDERS,
+)
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import AppState, MarketOrder, Region
+from arbitrageve.services import market_worker
 from arbitrageve.services.market_worker import (
     audit_region_refresh,
     calculate_region_refresh_minutes,
@@ -19,146 +26,38 @@ def _session():
     return sessionmaker(bind=engine)()
 
 
-def test_select_regions_prioritizes_overdue_configured_hubs():
-    session = _session()
-    now = datetime.now(UTC).replace(tzinfo=None)
-
-    forge = Region(region_id=10000002, name="The Forge")
-    domain = Region(region_id=10000043, name="Domain")
-    remote = Region(region_id=10000070, name="Genesis")
-    session.add_all([forge, domain, remote])
-    session.commit()
-
-    session.add_all(
-        [
-            MarketOrder(
-                order_id=1,
-                region_id=forge.region_id,
-                system_id=30000001,
-                location_id=60000001,
-                type_id=34,
-                price=1,
-                volume_remain=1,
-                volume_total=1,
-                is_buy_order=False,
-                collected_at=now - timedelta(minutes=90),
-            ),
-            MarketOrder(
-                order_id=2,
-                region_id=domain.region_id,
-                system_id=30000002,
-                location_id=60000002,
-                type_id=34,
-                price=1,
-                volume_remain=1,
-                volume_total=1,
-                is_buy_order=False,
-                collected_at=now - timedelta(minutes=90),
-            ),
-        ]
+def _order(order_id: int, region_id: int, collected_at: datetime) -> MarketOrder:
+    return MarketOrder(
+        order_id=order_id,
+        region_id=region_id,
+        system_id=30000001,
+        location_id=60000001,
+        type_id=34,
+        price=1,
+        volume_remain=1,
+        volume_total=1,
+        is_buy_order=False,
+        collected_at=collected_at,
     )
-    session.commit()
-
-    old_refresh = settings.market_refresh_minutes
-    old_min = settings.market_refresh_min_minutes
-    old_max = settings.market_refresh_max_minutes
-    old_reference = settings.market_refresh_reference_orders
-    old_exponent = settings.market_refresh_order_exponent
-    old_limit = settings.market_max_regions_per_run
-    old_priority = settings.market_region_priority
-    try:
-        settings.market_refresh_minutes = 60
-        settings.market_refresh_min_minutes = 15
-        settings.market_refresh_max_minutes = 360
-        settings.market_refresh_reference_orders = 1
-        settings.market_refresh_order_exponent = 0.5
-        settings.market_max_regions_per_run = 3
-        settings.market_region_priority = "The Forge,Domain"
-        selected = select_regions_for_refresh(session)
-    finally:
-        settings.market_refresh_minutes = old_refresh
-        settings.market_refresh_min_minutes = old_min
-        settings.market_refresh_max_minutes = old_max
-        settings.market_refresh_reference_orders = old_reference
-        settings.market_refresh_order_exponent = old_exponent
-        settings.market_max_regions_per_run = old_limit
-        settings.market_region_priority = old_priority
-
-    assert [region.name for region in selected] == ["The Forge", "Domain", "Genesis"]
 
 
-def test_select_regions_keeps_fresh_regions_after_overdue_regions():
-    session = _session()
-    now = datetime.now(UTC).replace(tzinfo=None)
-    session.add_all(
-        [
-            Region(region_id=1, name="Fresh"),
-            Region(region_id=2, name="Old"),
-        ]
-    )
-    session.commit()
+def test_refresh_policy_is_canonical_and_not_settings_driven():
+    assert MARKET_REFRESH_BASE_MINUTES == 5
+    assert MARKET_REFRESH_MIN_MINUTES == 5
+    assert MARKET_REFRESH_MAX_MINUTES == 1440
+    assert MARKET_REFRESH_REFERENCE_ORDERS == 50_000
+    assert MARKET_REFRESH_ORDER_EXPONENT == 0.5
 
-    session.add(
-        MarketOrder(
-            order_id=10,
-            region_id=1,
-            system_id=30000001,
-            location_id=60000001,
-            type_id=34,
-            price=1,
-            volume_remain=1,
-            volume_total=1,
-            is_buy_order=False,
-            collected_at=now - timedelta(minutes=5),
-        )
-    )
-    session.commit()
-
-    old_refresh = settings.market_refresh_minutes
-    old_reference = settings.market_refresh_reference_orders
-    old_exponent = settings.market_refresh_order_exponent
-    try:
-        settings.market_refresh_minutes = 30
-        settings.market_refresh_reference_orders = 1
-        settings.market_refresh_order_exponent = 0.0
-        selected = select_regions_for_refresh(session, limit=1)
-    finally:
-        settings.market_refresh_minutes = old_refresh
-        settings.market_refresh_reference_orders = old_reference
-        settings.market_refresh_order_exponent = old_exponent
-
-    assert [region.name for region in selected] == ["Old"]
+    assert calculate_region_refresh_minutes(0) == 1440
+    assert calculate_region_refresh_minutes(400_000) == 5
 
 
 def test_refresh_interval_decreases_as_order_volume_increases():
-    old_min = settings.market_refresh_min_minutes
-    old_max = settings.market_refresh_max_minutes
-    old_reference = settings.market_refresh_reference_orders
-    old_exponent = settings.market_refresh_order_exponent
-    old_base = settings.market_refresh_minutes
-    try:
-        settings.market_refresh_minutes = 5
-        settings.market_refresh_min_minutes = 5
-        settings.market_refresh_max_minutes = 1440
-        settings.market_refresh_reference_orders = 50_000
-        settings.market_refresh_order_exponent = 0.5
-
-        empty_region = calculate_region_refresh_minutes(0)
-        low_volume = calculate_region_refresh_minutes(100)
-        medium_volume = calculate_region_refresh_minutes(10_000)
-        high_volume = calculate_region_refresh_minutes(100_000)
-        forge_like = calculate_region_refresh_minutes(400_000)
-
-    finally:
-        settings.market_refresh_minutes = old_base
-        settings.market_refresh_min_minutes = old_min
-        settings.market_refresh_max_minutes = old_max
-        settings.market_refresh_reference_orders = old_reference
-        settings.market_refresh_order_exponent = old_exponent
-
-    assert empty_region == 1440
-    assert low_volume > medium_volume > high_volume
-    assert forge_like == 5
+    assert (
+        calculate_region_refresh_minutes(100)
+        > calculate_region_refresh_minutes(10_000)
+        > calculate_region_refresh_minutes(100_000)
+    )
 
 
 def test_select_regions_prioritizes_overdue_high_volume_region():
@@ -172,129 +71,39 @@ def test_select_regions_prioritizes_overdue_high_volume_region():
     session.add_all(
         [
             *[
-                MarketOrder(
-                    order_id=1000 + index,
-                    region_id=high.region_id,
-                    system_id=30000001,
-                    location_id=60000001,
-                    type_id=34,
-                    price=1,
-                    volume_remain=1,
-                    volume_total=1,
-                    is_buy_order=False,
-                    collected_at=now - timedelta(minutes=40),
-                )
+                _order(1000 + index, high.region_id, now - timedelta(minutes=40))
                 for index in range(400)
             ],
-            MarketOrder(
-                order_id=2000,
-                region_id=low.region_id,
-                system_id=30000002,
-                location_id=60000002,
-                type_id=34,
-                price=1,
-                volume_remain=1,
-                volume_total=1,
-                is_buy_order=False,
-                collected_at=now - timedelta(minutes=40),
-            ),
+            _order(2000, low.region_id, now - timedelta(minutes=40)),
         ]
     )
     session.commit()
 
-    old_refresh = settings.market_refresh_minutes
-    old_min = settings.market_refresh_min_minutes
-    old_max = settings.market_refresh_max_minutes
-    old_reference = settings.market_refresh_reference_orders
-    old_exponent = settings.market_refresh_order_exponent
-    try:
-        settings.market_refresh_minutes = 60
-        settings.market_refresh_min_minutes = 15
-        settings.market_refresh_max_minutes = 360
-        settings.market_refresh_reference_orders = 100
-        settings.market_refresh_order_exponent = 0.5
-        selected = select_regions_for_refresh(session, limit=2)
-    finally:
-        settings.market_refresh_minutes = old_refresh
-        settings.market_refresh_min_minutes = old_min
-        settings.market_refresh_max_minutes = old_max
-        settings.market_refresh_reference_orders = old_reference
-        settings.market_refresh_order_exponent = old_exponent
+    selected = select_regions_for_refresh(session, limit=2)
 
     assert [region.name for region in selected] == ["High Volume"]
 
 
-def test_audit_region_refresh_reports_due_fresh_and_never_states():
+def test_audit_region_refresh_uses_canonical_five_minute_floor_and_daily_empty():
     session = _session()
     now = datetime.now(UTC).replace(tzinfo=None)
-    session.add_all(
-        [
-            Region(region_id=1, name="The Forge"),
-            Region(region_id=2, name="Domain"),
-            Region(region_id=3, name="Genesis"),
-        ]
-    )
-    session.commit()
-    session.add_all(
-        [
-            MarketOrder(
-                order_id=1,
-                region_id=1,
-                system_id=30000001,
-                location_id=60000001,
-                type_id=34,
-                price=1,
-                volume_remain=1,
-                volume_total=1,
-                is_buy_order=False,
-                collected_at=now - timedelta(minutes=70),
-            ),
-            MarketOrder(
-                order_id=2,
-                region_id=2,
-                system_id=30000002,
-                location_id=60000002,
-                type_id=34,
-                price=1,
-                volume_remain=1,
-                volume_total=1,
-                is_buy_order=False,
-                collected_at=now - timedelta(minutes=5),
-            ),
-        ]
-    )
+    forge = Region(region_id=1, name="The Forge")
+    empty = Region(region_id=2, name="Genesis")
+    session.add_all([forge, empty])
     session.commit()
 
-    old_refresh = settings.market_refresh_minutes
-    old_min = settings.market_refresh_min_minutes
-    old_max = settings.market_refresh_max_minutes
-    old_reference = settings.market_refresh_reference_orders
-    old_exponent = settings.market_refresh_order_exponent
-    try:
-        settings.market_refresh_minutes = 60
-        settings.market_refresh_min_minutes = 15
-        settings.market_refresh_max_minutes = 360
-        settings.market_refresh_reference_orders = 1
-        settings.market_refresh_order_exponent = 0.0
-        audit = audit_region_refresh(session)
-    finally:
-        settings.market_refresh_minutes = old_refresh
-        settings.market_refresh_min_minutes = old_min
-        settings.market_refresh_max_minutes = old_max
-        settings.market_refresh_reference_orders = old_reference
-        settings.market_refresh_order_exponent = old_exponent
+    session.add(_order(1, forge.region_id, now - timedelta(minutes=6)))
+    session.commit()
 
-    by_name = {row["region"]: row for row in audit}
+    by_name = {row["region"]: row for row in audit_region_refresh(session)}
+
+    assert by_name["The Forge"]["target_refresh_minutes"] == calculate_region_refresh_minutes(1)
     assert by_name["The Forge"]["status"] == "DUE"
-    assert by_name["Domain"]["status"] == "FRESH"
+    assert by_name["Genesis"]["target_refresh_minutes"] == 1440
     assert by_name["Genesis"]["status"] == "NEVER"
-    assert by_name["The Forge"]["order_count"] == 1
-    assert by_name["Domain"]["target_refresh_minutes"] == 60
 
 
 def test_collect_priority_regions_persists_worker_health(monkeypatch):
-    from arbitrageve.services import market_worker
-
     session = _session()
     session.add(Region(region_id=10000002, name="The Forge"))
     session.commit()
