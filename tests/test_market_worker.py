@@ -71,7 +71,7 @@ def test_select_regions_prioritizes_overdue_high_volume_region():
     session.add_all(
         [
             *[
-                _order(1000 + index, high.region_id, now - timedelta(minutes=40))
+                _order(1000 + index, high.region_id, now - timedelta(minutes=60))
                 for index in range(400)
             ],
             _order(2000, low.region_id, now - timedelta(minutes=40)),
@@ -84,7 +84,7 @@ def test_select_regions_prioritizes_overdue_high_volume_region():
     assert [region.name for region in selected] == ["High Volume"]
 
 
-def test_audit_region_refresh_uses_canonical_five_minute_floor_and_daily_empty():
+def test_audit_region_refresh_uses_canonical_policy_and_daily_empty():
     session = _session()
     now = datetime.now(UTC).replace(tzinfo=None)
     forge = Region(region_id=1, name="The Forge")
@@ -92,12 +92,18 @@ def test_audit_region_refresh_uses_canonical_five_minute_floor_and_daily_empty()
     session.add_all([forge, empty])
     session.commit()
 
-    session.add(_order(1, forge.region_id, now - timedelta(minutes=6)))
+    session.add_all(
+        [
+            _order(1000 + index, forge.region_id, now - timedelta(minutes=60))
+            for index in range(400)
+        ]
+    )
     session.commit()
 
     by_name = {row["region"]: row for row in audit_region_refresh(session)}
 
-    assert by_name["The Forge"]["target_refresh_minutes"] == calculate_region_refresh_minutes(1)
+    assert calculate_region_refresh_minutes(400_000) == 5
+    assert by_name["The Forge"]["target_refresh_minutes"] == calculate_region_refresh_minutes(400)
     assert by_name["The Forge"]["status"] == "DUE"
     assert by_name["Genesis"]["target_refresh_minutes"] == 1440
     assert by_name["Genesis"]["status"] == "NEVER"
