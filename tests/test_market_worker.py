@@ -135,24 +135,30 @@ def test_refresh_interval_decreases_as_order_volume_increases():
     old_max = settings.market_refresh_max_minutes
     old_reference = settings.market_refresh_reference_orders
     old_exponent = settings.market_refresh_order_exponent
+    old_base = settings.market_refresh_minutes
     try:
-        settings.market_refresh_min_minutes = 15
-        settings.market_refresh_max_minutes = 360
-        settings.market_refresh_reference_orders = 100
+        settings.market_refresh_minutes = 5
+        settings.market_refresh_min_minutes = 5
+        settings.market_refresh_max_minutes = 1440
+        settings.market_refresh_reference_orders = 50_000
         settings.market_refresh_order_exponent = 0.5
 
+        empty_region = calculate_region_refresh_minutes(0)
         low_volume = calculate_region_refresh_minutes(100)
-        high_volume = calculate_region_refresh_minutes(400)
-        huge_volume = calculate_region_refresh_minutes(1_000_000)
+        medium_volume = calculate_region_refresh_minutes(10_000)
+        high_volume = calculate_region_refresh_minutes(100_000)
+        forge_like = calculate_region_refresh_minutes(400_000)
+
     finally:
+        settings.market_refresh_minutes = old_base
         settings.market_refresh_min_minutes = old_min
         settings.market_refresh_max_minutes = old_max
         settings.market_refresh_reference_orders = old_reference
         settings.market_refresh_order_exponent = old_exponent
 
-    assert low_volume == settings.market_refresh_minutes
-    assert high_volume < low_volume
-    assert huge_volume == 15
+    assert empty_region == 1440
+    assert low_volume > medium_volume > high_volume
+    assert forge_like == 5
 
 
 def test_select_regions_prioritizes_overdue_high_volume_region():
