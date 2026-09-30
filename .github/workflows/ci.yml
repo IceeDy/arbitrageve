@@ -37,4 +37,5 @@ jobs:
       - name: Ruff
         run: ruff check .
       - name: Pytest
-        run: timeout 10m pytest -vv --durations=20
+        timeout-minutes: 10
+        run: pytest -q -vv --durations=20
