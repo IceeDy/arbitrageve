@@ -7,6 +7,7 @@ from arbitrageve.db.models import (
     AppState,
     Item,
     MarketOrder,
+    Region,
     SolarSystem,
     Stargate,
 )
