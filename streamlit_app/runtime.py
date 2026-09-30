@@ -1,10 +1,52 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+
+# Streamlit Cloud exposes deployment configuration through st.secrets rather
+# than the process environment. The application package uses pydantic-settings
+# and reads environment variables, so bridge the supported deployment keys
+# before loading any repository module that instantiates Settings.
+_STREAMLIT_SECRET_ENV_MAP = {
+    "DATABASE_URL": "DATABASE_URL",
+    "ESI_BASE_URL": "ESI_BASE_URL",
+    "ESI_USER_AGENT": "ESI_USER_AGENT",
+    "CAPITAL_ISK": "CAPITAL_ISK",
+    "CARGO_M3": "CARGO_M3",
+    "MARKET_MAX_REGIONS_PER_RUN": "MARKET_MAX_REGIONS_PER_RUN",
+    "MARKET_REGION_PRIORITY": "MARKET_REGION_PRIORITY",
+}
+
+
+def _configure_streamlit_environment() -> None:
+    """Expose supported Streamlit secrets as environment variables.
+
+    Existing environment variables always win, which keeps local execution
+    and other deployment environments unchanged. Missing secrets simply leave
+    the current environment untouched.
+    """
+    try:
+        import streamlit as st
+        from streamlit.errors import StreamlitSecretNotFoundError
+    except ImportError:
+        return
+
+    try:
+        secrets = st.secrets
+    except StreamlitSecretNotFoundError:
+        return
+
+    for env_name, secret_name in _STREAMLIT_SECRET_ENV_MAP.items():
+        if env_name in os.environ or secret_name not in secrets:
+            continue
+        os.environ[env_name] = str(secrets[secret_name])
+
+
+_configure_streamlit_environment()
 
 
 def load_repo_module(module_name: str, relative_path: str, force: bool = False):
@@ -36,4 +78,8 @@ load_repo_module("arbitrageve.db.database", "arbitrageve/db/database.py")
 load_repo_module("arbitrageve.db.models", "arbitrageve/db/models.py")
 load_repo_module("arbitrageve.sde.loader", "arbitrageve/sde/loader.py")
 load_repo_module("arbitrageve.sde.routes", "arbitrageve/sde/routes.py")
-load_repo_module("arbitrageve.services.opportunities", "arbitrageve/services/opportunities.py", force=True)
+load_repo_module(
+    "arbitrageve.services.opportunities",
+    "arbitrageve/services/opportunities.py",
+    force=True,
+)
