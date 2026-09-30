@@ -31,12 +31,13 @@ def _configure_streamlit_environment() -> None:
     """
     try:
         import streamlit as st
+        from streamlit.errors import StreamlitSecretNotFoundError
     except ImportError:
         return
 
     try:
         secrets = st.secrets
-    except Exception:
+    except StreamlitSecretNotFoundError:
         return
 
     for env_name, secret_name in _STREAMLIT_SECRET_ENV_MAP.items():
