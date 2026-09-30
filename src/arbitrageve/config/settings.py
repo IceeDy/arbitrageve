@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/arbitrageve"
+    database_url: str | None = None
     esi_base_url: str = "https://esi.evetech.net"
     esi_user_agent: str = "ArbitrageVE/0.1.0 contact: your-email@example.com"
     capital_isk: float = 100_000_000
@@ -14,3 +14,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if not settings.database_url:
+    raise RuntimeError(
+        "DATABASE_URL is not configured. "
+        "Set DATABASE_URL in Streamlit Cloud Secrets or in the local .env file."
+    )
