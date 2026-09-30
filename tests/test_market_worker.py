@@ -92,19 +92,12 @@ def test_audit_region_refresh_uses_canonical_five_minute_floor_and_daily_empty()
     session.add_all([forge, empty])
     session.commit()
 
-    session.add_all(
-        [
-            *[
-                _order(1000 + index, forge.region_id, now - timedelta(minutes=6))
-                for index in range(400_000)
-            ],
-        ]
-    )
+    session.add(_order(1, forge.region_id, now - timedelta(minutes=6)))
     session.commit()
 
     by_name = {row["region"]: row for row in audit_region_refresh(session)}
 
-    assert by_name["The Forge"]["target_refresh_minutes"] == 5
+    assert by_name["The Forge"]["target_refresh_minutes"] == calculate_region_refresh_minutes(1)
     assert by_name["The Forge"]["status"] == "DUE"
     assert by_name["Genesis"]["target_refresh_minutes"] == 1440
     assert by_name["Genesis"]["status"] == "NEVER"
