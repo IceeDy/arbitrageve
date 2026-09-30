@@ -55,6 +55,10 @@ def _configure_streamlit_environment() -> None:
     Existing environment variables always win, which keeps local execution
     and other deployment environments unchanged. DATABASE_URL is also accepted
     from the common [database] and [connections.postgresql] Streamlit layouts.
+
+    A missing local secrets.toml is normal in CI and local unit tests; in that
+    case repository configuration continues to be resolved by pydantic-settings
+    from the process environment or .env file.
     """
     try:
         import streamlit as st
@@ -64,26 +68,35 @@ def _configure_streamlit_environment() -> None:
 
     try:
         secrets = st.secrets
+        database_url = (
+            _resolve_database_url(secrets)
+            if "DATABASE_URL" not in os.environ
+            else None
+        )
+
+        if database_url and "DATABASE_URL" not in os.environ:
+            os.environ["DATABASE_URL"] = database_url
+
+        for env_name, secret_name in _STREAMLIT_SECRET_ENV_MAP.items():
+            if env_name == "DATABASE_URL" or env_name in os.environ:
+                continue
+            if secret_name not in secrets:
+                continue
+            os.environ[env_name] = str(secrets[secret_name])
     except StreamlitSecretNotFoundError:
         return
 
     if "DATABASE_URL" not in os.environ:
-        database_url = _resolve_database_url(secrets)
-        if database_url:
-            os.environ["DATABASE_URL"] = database_url
-        elif secrets:
+        try:
+            has_secrets = bool(st.secrets)
+        except StreamlitSecretNotFoundError:
+            return
+        if has_secrets:
             raise RuntimeError(
                 "ArbitrageVE requires DATABASE_URL in Streamlit secrets. "
                 "Add a root-level DATABASE_URL, or [database].url / "
                 "[connections.postgresql].url pointing to the persistent PostgreSQL database."
             )
-
-    for env_name, secret_name in _STREAMLIT_SECRET_ENV_MAP.items():
-        if env_name == "DATABASE_URL" or env_name in os.environ:
-            continue
-        if secret_name not in secrets:
-            continue
-        os.environ[env_name] = str(secrets[secret_name])
 
 
 _configure_streamlit_environment()
