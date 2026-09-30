@@ -39,13 +39,8 @@ def calculate_region_refresh_minutes(order_count: int) -> float:
     )
 
 
-def select_regions_for_refresh(session, limit: int | None = None) -> list[Region]:
-    """Select regions whose adaptive refresh interval has elapsed."""
-    limit = limit or settings.market_max_regions_per_run
-    priority = _priority_map()
-    now = datetime.now(UTC).replace(tzinfo=None)
-
-    rows = session.execute(
+def _region_market_rows(session) -> list[tuple[Region, datetime | None, int]]:
+    return session.execute(
         select(
             Region,
             func.max(MarketOrder.collected_at).label("last_collected"),
@@ -55,8 +50,62 @@ def select_regions_for_refresh(session, limit: int | None = None) -> list[Region
         .group_by(Region.region_id)
     ).all()
 
+
+def audit_region_refresh(session) -> list[dict[str, object]]:
+    """Return operational refresh state for every known region."""
+    priority = _priority_map()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    audit: list[dict[str, object]] = []
+
+    for region, last_collected, order_count in _region_market_rows(session):
+        refresh_minutes = calculate_region_refresh_minutes(order_count)
+        if last_collected is None:
+            age_minutes = None
+            overdue_ratio = None
+            status = "NEVER"
+        else:
+            age_minutes = max(
+                0.0,
+                (now - last_collected).total_seconds() / 60,
+            )
+            overdue_ratio = (
+                age_minutes / refresh_minutes if refresh_minutes else float("inf")
+            )
+            status = "DUE" if age_minutes >= refresh_minutes else "FRESH"
+
+        audit.append(
+            {
+                "region_id": region.region_id,
+                "region": region.name,
+                "order_count": order_count,
+                "last_collected": last_collected,
+                "age_minutes": age_minutes,
+                "target_refresh_minutes": refresh_minutes,
+                "overdue_ratio": overdue_ratio,
+                "priority": priority.get(region.name.lower(), 10_000),
+                "status": status,
+            }
+        )
+
+    audit.sort(
+        key=lambda row: (
+            0 if row["status"] == "DUE" else 1 if row["status"] == "NEVER" else 2,
+            -(row["overdue_ratio"] or 0.0),
+            row["priority"],
+            row["region"],
+        )
+    )
+    return audit
+
+
+def select_regions_for_refresh(session, limit: int | None = None) -> list[Region]:
+    """Select regions whose adaptive refresh interval has elapsed."""
+    limit = limit or settings.market_max_regions_per_run
+    priority = _priority_map()
+    now = datetime.now(UTC).replace(tzinfo=None)
+
     due_rows = []
-    for region, last_collected, order_count in rows:
+    for region, last_collected, order_count in _region_market_rows(session):
         refresh_minutes = calculate_region_refresh_minutes(order_count)
         age_minutes = (
             float("inf")
@@ -64,8 +113,6 @@ def select_regions_for_refresh(session, limit: int | None = None) -> list[Region
             else max(0.0, (now - last_collected).total_seconds() / 60)
         )
         if last_collected is None or age_minutes >= refresh_minutes:
-            # Bootstrap regions are due immediately, but configured hub
-            # priority must still be able to break ties among them.
             overdue_ratio = (
                 1.0
                 if last_collected is None

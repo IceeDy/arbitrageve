@@ -6,6 +6,7 @@ from arbitrageve.config.settings import settings
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import AppState, MarketOrder, Region
 from arbitrageve.services.market_worker import (
+    audit_region_refresh,
     calculate_region_refresh_minutes,
     select_regions_for_refresh,
 )
@@ -215,6 +216,74 @@ def test_select_regions_prioritizes_overdue_high_volume_region():
         settings.market_refresh_order_exponent = old_exponent
 
     assert [region.name for region in selected] == ["High Volume"]
+
+
+def test_audit_region_refresh_reports_due_fresh_and_never_states():
+    session = _session()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    session.add_all(
+        [
+            Region(region_id=1, name="The Forge"),
+            Region(region_id=2, name="Domain"),
+            Region(region_id=3, name="Genesis"),
+        ]
+    )
+    session.commit()
+    session.add_all(
+        [
+            MarketOrder(
+                order_id=1,
+                region_id=1,
+                system_id=30000001,
+                location_id=60000001,
+                type_id=34,
+                price=1,
+                volume_remain=1,
+                volume_total=1,
+                is_buy_order=False,
+                collected_at=now - timedelta(minutes=70),
+            ),
+            MarketOrder(
+                order_id=2,
+                region_id=2,
+                system_id=30000002,
+                location_id=60000002,
+                type_id=34,
+                price=1,
+                volume_remain=1,
+                volume_total=1,
+                is_buy_order=False,
+                collected_at=now - timedelta(minutes=5),
+            ),
+        ]
+    )
+    session.commit()
+
+    old_refresh = settings.market_refresh_minutes
+    old_min = settings.market_refresh_min_minutes
+    old_max = settings.market_refresh_max_minutes
+    old_reference = settings.market_refresh_reference_orders
+    old_exponent = settings.market_refresh_order_exponent
+    try:
+        settings.market_refresh_minutes = 60
+        settings.market_refresh_min_minutes = 15
+        settings.market_refresh_max_minutes = 360
+        settings.market_refresh_reference_orders = 1
+        settings.market_refresh_order_exponent = 0.0
+        audit = audit_region_refresh(session)
+    finally:
+        settings.market_refresh_minutes = old_refresh
+        settings.market_refresh_min_minutes = old_min
+        settings.market_refresh_max_minutes = old_max
+        settings.market_refresh_reference_orders = old_reference
+        settings.market_refresh_order_exponent = old_exponent
+
+    by_name = {row["region"]: row for row in audit}
+    assert by_name["The Forge"]["status"] == "DUE"
+    assert by_name["Domain"]["status"] == "FRESH"
+    assert by_name["Genesis"]["status"] == "NEVER"
+    assert by_name["The Forge"]["order_count"] == 1
+    assert by_name["Domain"]["target_refresh_minutes"] == 60
 
 
 def test_collect_priority_regions_persists_worker_health(monkeypatch):
