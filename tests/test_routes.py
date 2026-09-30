@@ -1,13 +1,13 @@
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from arbitrageve.db.database import Base
 from arbitrageve.db.models import SolarSystem, Stargate
 from arbitrageve.sde.routes import LocalRouteClient
+from tests.db import create_test_engine
 
 
 def _session():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine)()
 

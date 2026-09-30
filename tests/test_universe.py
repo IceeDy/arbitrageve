@@ -1,7 +1,7 @@
 import json
 import zipfile
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from arbitrageve.db.database import Base
@@ -13,6 +13,7 @@ from arbitrageve.sde.loader import (
     load_stargates_from_archive,
     load_types,
 )
+from tests.db import create_test_engine
 
 
 def _make_sde(tmp_path, records):
@@ -36,7 +37,7 @@ def test_load_types_current_object_shape(tmp_path):
         ],
     )
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -77,7 +78,7 @@ def test_load_stargates_current_object_shape(tmp_path):
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.write(stargates_path, "mapStargates.jsonl")
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -112,7 +113,7 @@ def test_load_regions_from_archive(tmp_path):
         [{"_key": 10000002, "name": {"en": "The Forge"}}],
     )
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
@@ -134,7 +135,7 @@ def test_load_solar_systems_includes_region(tmp_path):
         ],
     )
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_test_engine()
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
 
