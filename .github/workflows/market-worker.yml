@@ -1,8 +1,10 @@
 name: Market Worker
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  # PAUSED: automatic ESI market polling disabled to stop recurring email spam.
+  # Re-enable the schedule below when market collection should resume.
+  # schedule:
+  #   - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
